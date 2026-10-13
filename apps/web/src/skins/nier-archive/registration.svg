@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000" preserveAspectRatio="none" fill="none" stroke="#8b8270" opacity=".4">
+  <style>path,rect{vector-effect:non-scaling-stroke;stroke-width:.7}</style>
+  <path d="M12 90V12h90M898 12h90v78M12 910v78h90M898 988h90v-78"/>
+  <path d="M12 120v760M988 120v760" opacity=".35" stroke-dasharray="2 9"/>
+  <path d="M120 12h760M120 988h760" opacity=".25"/>
+  <path d="M6 80h12M12 74v12M6 500h12M12 494v12M6 920h12M12 914v12M982 80h12M988 74v12M982 500h12M988 494v12M982 920h12M988 914v12"/>
+  <path d="M70 6v12M64 12h12M930 6v12M924 12h12M70 982v12M64 988h12M930 982v12M924 988h12"/>
+  <path d="M34 940h52l16-16M914 66h52l-16-16"/>
+  <rect x="9" y="9" width="6" height="6" fill="#8b8270" stroke="none"/>
+  <rect x="985" y="985" width="6" height="6" fill="#8b8270" stroke="none"/>
+</svg>

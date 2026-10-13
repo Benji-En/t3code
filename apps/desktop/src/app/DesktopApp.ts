@@ -253,6 +253,17 @@ const bootstrap = Effect.gen(function* () {
     }
     yield* primaryBackend.start;
     yield* logBootstrapInfo("bootstrap backend start requested");
+    // This source fork serves bundled client assets without waiting for HTTP.
+    // The renderer can connect in the background; official launches keep the
+    // existing readiness gate, as does WSL-only startup.
+    if (
+      environment.platform === "win32" &&
+      environment.appUserModelId === "com.benji.t3code.fork" &&
+      !environment.isDevelopment &&
+      !settings.wslOnly
+    ) {
+      yield* desktopWindow.createMain;
+    }
     yield* appActivation.start.pipe(
       Effect.tap(() => logBootstrapInfo("desktop app control socket ready")),
       Effect.catch((error) => logStartupError("desktop app control socket unavailable", { error })),
@@ -280,7 +291,11 @@ const startup = Effect.gen(function* () {
   const environment = yield* DesktopEnvironment.DesktopEnvironment;
   const previewPasskeys = yield* PreviewPasskeys.PreviewPasskeys;
 
-  yield* shellEnvironment.installIntoProcess;
+  // The fork launcher supplies its isolated runtime PATH. Re-probing the user's
+  // PowerShell profile delays boot and can replace that curated environment.
+  if (environment.platform !== "win32" || environment.appUserModelId !== "com.benji.t3code.fork") {
+    yield* shellEnvironment.installIntoProcess;
+  }
   const hasCommandLinePasswordStore =
     preReadyElectronOptions.linuxPasswordStoreCommandLine !== null;
   const linuxElectronOptions =

@@ -1,0 +1,215 @@
+/* Fork-only paint. Keep geometry, typography, hit targets and stacking unchanged. */
+html[data-theme-id="benji-nier-archive"] {
+  --surface-grain: url("data:image/svg+xml,%3Csvg viewBox='0 0 192 192' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.72' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.065'/%3E%3C/svg%3E");
+  --surface-grain-size: 192px 192px;
+  --nier-orbit: url("./nier-archive/orbital.svg");
+  --nier-rule: color-mix(in srgb, var(--app-theme-text) 23%, transparent);
+  --nier-paper-wash: color-mix(in srgb, var(--app-theme-canvas) 70%, transparent);
+  --nier-sidebar-wash: color-mix(in srgb, var(--app-theme-sidebar) 78%, transparent);
+  --success: #52664d;
+  --success-foreground: #405339;
+}
+
+html.dark[data-theme-id="benji-nier-archive"] {
+  --surface-grain: url("data:image/svg+xml,%3Csvg viewBox='0 0 192 192' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.72' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.035'/%3E%3C/svg%3E");
+  --nier-orbit: url("./nier-archive/orbital-night.svg");
+  --nier-rule: color-mix(in srgb, var(--app-theme-text) 14%, transparent);
+  --nier-paper-wash: color-mix(in srgb, var(--app-theme-canvas) 89%, transparent);
+  --nier-sidebar-wash: color-mix(in srgb, var(--app-theme-sidebar) 92%, transparent);
+  --success: #a7b49a;
+  --success-foreground: #b6c3a9;
+}
+
+/* Match the night sidebar's solid shade. Independent glass backdrops would
+   otherwise tint these two surfaces differently over the canvas artwork. */
+html.dark[data-theme-id="benji-nier-archive"] [data-slot="composer-shell"],
+html.dark[data-theme-id="benji-nier-archive"] [data-thread-details-card] {
+  --glass-opacity: 100%;
+}
+
+/* Preserve the user's alternative blue/orange diff accessibility preference. */
+html[data-theme-id="benji-nier-archive"]:not([data-diff-color-scheme="blue-orange"]) {
+  --diff-addition: var(--success);
+  --diff-deletion: var(--app-theme-error);
+  --diff-addition-foreground: var(--success-foreground);
+  --diff-deletion-foreground: var(--app-theme-error-foreground);
+  --diffs-addition-color-override: var(--diff-addition);
+  --diffs-deletion-color-override: var(--diff-deletion);
+  --trees-status-added-override: var(--diff-addition);
+  --trees-status-deleted-override: var(--diff-deletion);
+  --trees-status-untracked-override: var(--diff-addition);
+  --trees-git-added-color-override: var(--diff-addition);
+  --trees-git-deleted-color-override: var(--diff-deletion);
+  --trees-git-untracked-color-override: var(--diff-addition);
+}
+
+/* Backgrounds add no DOM, positioning context, hit targets or layout changes.
+   Washes keep the vignette faint underneath live content in either appearance. */
+html[data-theme-id="benji-nier-archive"] [data-slot="sidebar-inner"],
+html[data-theme-id="benji-nier-archive"] [data-slot="sidebar"][data-mobile="true"] {
+  background-image:
+    var(--surface-grain), var(--nier-orbit), url("./nier-archive/registration.svg"),
+    linear-gradient(var(--nier-sidebar-wash), var(--nier-sidebar-wash)),
+    url("./nier-archive/ruins-structural.webp");
+  background-size:
+    var(--surface-grain-size),
+    280px 280px,
+    100% 100%,
+    100% 100%,
+    auto 280px;
+  background-position:
+    left top,
+    right -100px bottom 150px,
+    left top,
+    left top,
+    left bottom;
+  background-repeat: repeat, no-repeat, no-repeat, no-repeat, no-repeat;
+}
+
+/* Empty drafts use the inset directly; started threads add a chat canvas. */
+html[data-theme-id="benji-nier-archive"] [data-slot="sidebar-inset"],
+html[data-theme-id="benji-nier-archive"] [data-chat-canvas] {
+  background-color: var(--app-theme-canvas);
+  background-image:
+    var(--surface-grain), url("./nier-archive/registration.svg"), var(--nier-orbit),
+    linear-gradient(var(--nier-paper-wash), var(--nier-paper-wash)),
+    url("./nier-archive/ruins-structural.webp");
+  background-size:
+    var(--surface-grain-size),
+    100% 100%,
+    340px 340px,
+    100% 100%,
+    100% auto;
+  background-position:
+    left top,
+    left top,
+    right -130px top -140px,
+    left top,
+    center bottom;
+  background-repeat: repeat, no-repeat, no-repeat, no-repeat, no-repeat;
+}
+
+/* The timeline's opaque backing covers its canvas. Give that existing layer
+   the same paint instead of adding an overlay or changing its geometry. */
+html[data-theme-id="benji-nier-archive"] [data-chat-canvas] > .bg-background,
+html[data-theme-id="benji-nier-archive"] [data-timeline-loading="true"] {
+  background-image: inherit;
+  background-size: inherit;
+  background-position: inherit;
+  background-repeat: inherit;
+}
+
+/* Paint the selected mark inside the existing wordmark's box. Its dimensions,
+   accessible label and the adjacent title retain upstream behavior. */
+html[data-theme-id="benji-nier-archive"] svg[aria-label="T3"] {
+  background-color: var(--app-theme-text);
+  mask-image: url("../../../../assets/benji-fork/icon.png");
+  mask-mode: alpha;
+  mask-size: auto 110%;
+  mask-position: center;
+  mask-repeat: no-repeat;
+}
+
+html[data-theme-id="benji-nier-archive"] svg[aria-label="T3"] path {
+  opacity: 0;
+}
+
+html[data-theme-id="benji-nier-archive"] [data-chat-header] {
+  background-image:
+    var(--surface-grain), var(--nier-orbit),
+    repeating-linear-gradient(90deg, var(--nier-rule) 0 1px, transparent 1px 24px),
+    linear-gradient(var(--nier-rule), var(--nier-rule));
+  background-size:
+    var(--surface-grain-size),
+    210px 210px,
+    100% 4px,
+    100% 1px;
+  background-position:
+    left top,
+    72% center,
+    left bottom,
+    left bottom;
+  background-repeat: repeat, no-repeat, no-repeat, no-repeat;
+}
+
+/* Sharper paint on existing surfaces; preserve every border width and radius
+   involved in the composer's attachment/clip geometry. */
+html[data-theme-id="benji-nier-archive"] [data-slot="composer-shell"] {
+  --chat-composer-outline: var(--app-theme-border);
+  --chat-composer-highlight: var(--nier-rule);
+}
+
+html[data-theme-id="benji-nier-archive"] [data-slot="composer-host"] {
+  box-shadow: inset 0 0 0 1px var(--nier-rule);
+}
+
+/* Use the project menu's quiet edge in night mode, without a second inset line. */
+html.dark[data-theme-id="benji-nier-archive"] [data-slot="composer-shell"] {
+  --chat-composer-outline: color-mix(in srgb, var(--contrast-foreground) 10%, transparent);
+  --chat-composer-highlight: transparent;
+}
+
+html.dark[data-theme-id="benji-nier-archive"] [data-slot="composer-host"] {
+  box-shadow: none;
+}
+
+/* Interrupt shares Start/Play's palette without recoloring errors or other
+   destructive actions. Keep the upstream square, focus and hit target. */
+html[data-theme-id="benji-nier-archive"] button[aria-label="Stop generation"] {
+  background-color: var(--message-action);
+  color: var(--message-action-foreground);
+  --tw-shadow-color: color-mix(in srgb, var(--message-action) 24%, transparent);
+}
+
+html[data-theme-id="benji-nier-archive"] button[aria-label="Stop generation"]:enabled:hover {
+  background-color: var(--message-action-hover);
+}
+
+/* Brighten only the conversation. Re-resolve the contrast roles here so the
+   existing appearance slider still applies to the local ivory text palette. */
+html.dark[data-theme-id="benji-nier-archive"] [data-timeline-root] {
+  --foreground: #f2e8d8;
+  --message-foreground: var(--foreground);
+  --muted-foreground: #d7c8b2;
+  --secondary-label: var(--muted-foreground);
+  --contrast-foreground: color-mix(
+    in oklab,
+    color-mix(in oklab, var(--foreground) var(--appearance-contrast-base), var(--background)),
+    var(--appearance-contrast-target) var(--appearance-contrast-boost)
+  );
+  --contrast-message-foreground: color-mix(
+    in oklab,
+    color-mix(
+      in oklab,
+      var(--message-foreground) var(--appearance-contrast-base),
+      var(--message-surface)
+    ),
+    var(--appearance-contrast-target) var(--appearance-contrast-boost)
+  );
+  --contrast-muted-foreground: color-mix(
+    in oklab,
+    color-mix(in oklab, var(--muted-foreground) var(--appearance-contrast-base), var(--background)),
+    var(--appearance-contrast-target) var(--appearance-contrast-boost)
+  );
+  --contrast-secondary-label: var(--contrast-muted-foreground);
+}
+
+/* Upstream prose uses an 80% foreground tint. Keep night-mode prose fully
+   opaque so paragraph text does not fade into the textured canvas. */
+html.dark[data-theme-id="benji-nier-archive"] [data-timeline-root] .chat-markdown {
+  color: var(--contrast-foreground);
+}
+
+html[data-theme-id="benji-nier-archive"]
+  :is(
+    [data-slot="dialog-popup"],
+    [data-slot="popover-popup"],
+    [data-slot="menu-popup"],
+    [data-slot="select-popup"]
+  ) {
+  background-image: var(--surface-grain);
+  background-size: var(--surface-grain-size);
+  box-shadow:
+    inset 0 0 0 1px var(--nier-rule),
+    0 8px 24px rgb(0 0 0 / 12%);
+}

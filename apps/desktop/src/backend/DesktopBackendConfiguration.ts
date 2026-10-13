@@ -591,7 +591,16 @@ const resolvePrimaryStartConfig = Effect.fn("desktop.backendConfiguration.resolv
       // so the setting does not leak into the provider and terminal processes
       // the backend starts.
       args: [
-        ...(environment.isPackaged ? ["--require", environment.compileCachePath] : []),
+        ...(environment.appUserModelId === "com.benji.t3code.fork" &&
+        !environment.isDevelopment &&
+        !environment.isPackaged
+          ? [
+              "--require",
+              environment.path.join(environment.appRoot, "scripts/benji-fork/backend-cache.cjs"),
+            ]
+          : environment.isPackaged
+            ? ["--require", environment.compileCachePath]
+            : []),
         environment.backendEntryPath,
         "--bootstrap-fd",
         "3",

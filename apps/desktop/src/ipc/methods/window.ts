@@ -19,6 +19,7 @@ import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Effect from "effect/Effect";
+import * as Duration from "effect/Duration";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
@@ -177,6 +178,16 @@ export const getLocalEnvironmentBearerToken = DesktopIpc.makeIpcMethod({
   result: Schema.String,
   handler: Effect.fn("desktop.ipc.window.getLocalEnvironmentBearerToken")(function* () {
     const localAuth = yield* DesktopLocalEnvironmentAuth.DesktopLocalEnvironmentAuth;
+    const environment = yield* DesktopEnvironment.DesktopEnvironment;
+    // This fork opens its bundled renderer before the backend is listening.
+    // Start the token exchange after readiness so a cold boot cannot consume
+    // the authentication retry budget or leave an early HTTP request stalled.
+    if (environment.appUserModelId === "com.benji.t3code.fork") {
+      const primary = yield* (yield* DesktopBackendPool.DesktopBackendPool).primary;
+      if (!(yield* primary.waitForReady(Duration.seconds(30)))) {
+        return yield* new DesktopLocalEnvironmentAuth.DesktopLocalEnvironmentAuthBackendNotConfiguredError();
+      }
+    }
     return yield* localAuth.getBearerToken;
   }),
 });

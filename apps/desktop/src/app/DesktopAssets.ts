@@ -100,19 +100,29 @@ const resolveIconPath = Effect.fn("desktop.assets.resolveIconPath")(function* (
   const fileSystem = yield* FileSystem.FileSystem;
   const environment = yield* DesktopEnvironment.DesktopEnvironment;
   const sourceTreeIconPath = resolveSourceTreeIconPath(environment, ext);
-  if (sourceTreeIconPath !== undefined) {
-    const sourceTreeIconExists = yield* fileSystem.exists(sourceTreeIconPath).pipe(
+  // The isolated Windows fork has its own identity; official launches keep
+  // the upstream artwork. Missing fork assets fall back to the normal icon.
+  const forkIconPath =
+    !environment.isPackaged &&
+    environment.platform === "win32" &&
+    environment.appUserModelId === "com.benji.t3code.fork" &&
+    ext === "ico"
+      ? environment.path.join(environment.rootDir, "assets", "benji-fork", "icon.ico")
+      : undefined;
+  for (const candidate of [forkIconPath, sourceTreeIconPath]) {
+    if (candidate === undefined) continue;
+    const sourceTreeIconExists = yield* fileSystem.exists(candidate).pipe(
       Effect.mapError(
         (cause) =>
           new DesktopAssetProbeError({
             fileName: `icon.${ext}`,
-            candidatePath: sourceTreeIconPath,
+            candidatePath: candidate,
             cause,
           }),
       ),
     );
     if (sourceTreeIconExists) {
-      return Option.some(sourceTreeIconPath);
+      return Option.some(candidate);
     }
   }
 

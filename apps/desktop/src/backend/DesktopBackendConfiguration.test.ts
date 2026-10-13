@@ -62,6 +62,7 @@ function layerEnvironment(
     readonly platform?: NodeJS.Platform;
     readonly resourcesPath?: string;
     readonly appVersion?: string;
+    readonly appUserModelId?: string;
     readonly processArch?: NodeJS.Architecture;
     readonly otlpTracesUrl?: string;
     readonly otlpMetricsUrl?: string;
@@ -88,6 +89,7 @@ function layerEnvironment(
           T3CODE_MODE: "desktop",
           T3CODE_DESKTOP_LAN_HOST: "192.168.1.50",
           VITE_DEV_SERVER_URL: options?.devServerUrl,
+          T3CODE_DESKTOP_APP_USER_MODEL_ID: options?.appUserModelId,
           T3CODE_OTLP_TRACES_URL: options?.otlpTracesUrl,
           T3CODE_OTLP_METRICS_URL: options?.otlpMetricsUrl,
           T3CODE_OTLP_LOGS_URL: options?.otlpLogsUrl,
@@ -114,6 +116,7 @@ const withHarness = <A, E, R>(
     | FileSystem.FileSystem
     | DesktopBackendConfiguration.DesktopBackendConfiguration
   >,
+  options?: Parameters<typeof layerEnvironment>[1],
 ) =>
   Effect.gen(function* () {
     const fileSystem = yield* FileSystem.FileSystem;
@@ -128,7 +131,7 @@ const withHarness = <A, E, R>(
           Layer.provideMerge(DesktopAppSettings.layerTest()),
           Layer.provideMerge(DesktopWslEnvironment.layerTest()),
           Layer.provideMerge(DesktopWslServerTree.layerTest()),
-          Layer.provideMerge(layerEnvironment(baseDir)),
+          Layer.provideMerge(layerEnvironment(baseDir, options)),
         ),
       ),
     );
@@ -323,6 +326,25 @@ describe("DesktopBackendConfiguration", () => {
       );
       assert.equal(config.env.ELECTRON_RUN_AS_NODE, "1");
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect("source fork caches only its backend without passing cache settings to providers", () =>
+    withHarness(
+      Effect.gen(function* () {
+        const environment = yield* DesktopEnvironment.DesktopEnvironment;
+        const config = yield* (yield* DesktopBackendConfiguration.DesktopBackendConfiguration)
+          .resolvePrimary;
+        const path = yield* Path.Path;
+        assert.deepEqual(config.args.slice(0, 3), [
+          "--require",
+          path.join(environment.appRoot, "scripts/benji-fork/backend-cache.cjs"),
+          environment.backendEntryPath,
+        ]);
+        assert.isUndefined(config.env.NODE_COMPILE_CACHE);
+        assert.isUndefined(config.env.NODE_OPTIONS);
+      }),
+      { isPackaged: false, appUserModelId: "com.benji.t3code.fork" },
+    ),
   );
 
   it.effect("only the local primary bootstrap claims the prepared shell environment", () =>

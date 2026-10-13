@@ -4,6 +4,8 @@ import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Effect from "effect/Effect";
+import * as Deferred from "effect/Deferred";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import { vi } from "vite-plus/test";
@@ -22,11 +24,14 @@ vi.mock("electron", () => ({
 import * as DesktopBackendConfiguration from "../../backend/DesktopBackendConfiguration.ts";
 import * as DesktopBackendManager from "../../backend/DesktopBackendManager.ts";
 import * as DesktopBackendPool from "../../backend/DesktopBackendPool.ts";
+import * as DesktopEnvironment from "../../app/DesktopEnvironment.ts";
+import * as DesktopLocalEnvironmentAuth from "../../backend/DesktopLocalEnvironmentAuth.ts";
 import * as ElectronDialog from "../../electron/ElectronDialog.ts";
 import * as ElectronWindow from "../../electron/ElectronWindow.ts";
 import * as DesktopAppSettings from "../../settings/DesktopAppSettings.ts";
 import {
   getLocalEnvironmentBootstraps,
+  getLocalEnvironmentBearerToken,
   getWindowFullscreenState,
   pasteAsText,
   pickProjectFavicon,
@@ -84,6 +89,47 @@ const backendConfigurationLayer = Layer.succeed(
 
 const bootstrapsLayer = (instances: ReadonlyArray<DesktopBackendManager.DesktopBackendInstance>) =>
   Layer.merge(DesktopBackendPool.layerTest([...instances]), backendConfigurationLayer);
+
+describe("fork startup authentication", () => {
+  it.effect.each(["com.benji.t3code.fork", "com.t3tools.t3code"])(
+    "keeps the readiness gate scoped to %s",
+    (identity) =>
+      Effect.gen(function* () {
+        const waiting = yield* Deferred.make<void>();
+        const ready = yield* Deferred.make<boolean>();
+        let exchanged = false;
+        const fiber = yield* getLocalEnvironmentBearerToken.handler(undefined).pipe(
+          Effect.provideService(DesktopEnvironment.DesktopEnvironment, {
+            appUserModelId: identity,
+          } as DesktopEnvironment.DesktopEnvironment["Service"]),
+          Effect.provide(
+            DesktopBackendPool.layerTest([
+              {
+                ...defaultWslInstance,
+                id: DesktopBackendManager.BackendInstanceId("primary"),
+                waitForReady: () =>
+                  Deferred.succeed(waiting, undefined).pipe(Effect.andThen(Deferred.await(ready))),
+              },
+            ]),
+          ),
+          Effect.provideService(DesktopLocalEnvironmentAuth.DesktopLocalEnvironmentAuth, {
+            getBearerToken: Effect.sync(() => {
+              exchanged = true;
+              return "test-bearer";
+            }),
+          }),
+          Effect.forkChild,
+        );
+        if (identity === "com.benji.t3code.fork") {
+          yield* Deferred.await(waiting);
+          assert.isFalse(exchanged);
+          yield* Deferred.succeed(ready, true);
+        }
+        assert.equal(yield* Fiber.join(fiber), "test-bearer");
+        assert.isTrue(exchanged);
+      }),
+  );
+});
 
 describe("getLocalEnvironmentBootstraps", () => {
   it.effect("publishes the concrete running distro without replacing the stable instance id", () =>
