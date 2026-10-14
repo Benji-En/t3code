@@ -10,6 +10,7 @@ import {
   usageLimitBlockedRun,
 } from "@t3tools/shared/orchestrationV2ThreadError";
 import { threadPullRequestsOf } from "@t3tools/shared/threadPullRequests";
+import { canAutoArchiveSubagent } from "./SubagentArchiving.ts";
 import {
   normalizeThreadPullRequestKey,
   visibleThreadPullRequests,
@@ -2534,6 +2535,24 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           cause: `Thread ${command.threadId} is no longer empty.`,
         });
     }
+    if (command.type === "thread.archive" && command.onlyIfUnusedSubagent === true) {
+      const shell = yield* projectionStore
+        .getThreadShell(command.threadId)
+        .pipe(mapDispatchError(command));
+      const child = yield* projectionStore
+        .getThreadRecords(command.threadId, ["runs", "providerTurns", "subagents"])
+        .pipe(mapDispatchError(command));
+      const parentId = shell?.lineage.parentThreadId;
+      const parent =
+        parentId == null
+          ? null
+          : yield* projectionStore
+              .getThreadRecords(parentId, ["runs", "subagents"])
+              .pipe(mapDispatchError(command));
+      if (shell === null || parent === null || !canAutoArchiveSubagent(shell, parent, child)) {
+        return;
+      }
+    }
     if (command.type === "thread.archive" && thread.archivedAt !== null) {
       return yield* new OrchestratorDispatchError({
         commandId: command.commandId,
@@ -2832,7 +2851,14 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             updatedAt: now,
           };
         case "thread.unarchive":
-          return { ...thread, archivedAt: null, updatedAt: now };
+          return {
+            ...thread,
+            archivedAt: null,
+            updatedAt: now,
+            ...(thread.lineage.relationshipToParent === "subagent"
+              ? { autoSettleDisabledAt: now }
+              : {}),
+          };
         case "thread.settle": {
           // Settling is "I'm done with this": it clears a pin the same way it
           // parks the thread (mirrors the v1 decider's settle/pin exclusion).
@@ -10967,6 +10993,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         // stop that finds nothing running, has nothing to record. That is
         // its expected outcome, not a failure.
         planned.events.length > 0 ||
+        (command.type === "thread.archive" && command.onlyIfUnusedSubagent === true) ||
         command.type === "thread.background-work.settle" ||
         command.type === "thread.stop" ||
         command.type === "subagent.stop"

@@ -71,7 +71,7 @@ describe("v2 thread shell lists", () => {
     registry.dispose();
   });
 
-  it("keeps navigation stable on hidden subagent updates and retains user forks", () => {
+  it("includes subagents in navigation and updates their rows without replacing siblings", () => {
     const { registry, threads, snapshotAtom } = makeHarness();
     const root = v2ThreadShell;
     const child = {
@@ -92,13 +92,26 @@ describe("v2 thread shell lists", () => {
     registry.set(snapshotAtom(environmentId), snapshot);
     const dispose = registry.mount(threads.navigationThreadShellsAtom);
     const before = registry.get(threads.navigationThreadShellsAtom);
-    expect(before.map((thread) => thread.id)).toEqual([root.id, fork.id]);
+    expect(before.map((thread) => thread.id)).toEqual([root.id, child.id, fork.id]);
     registry.set(snapshotAtom(environmentId), {
       ...snapshot,
       threads: [root, { ...child, title: "Child streaming" }, fork],
     });
-    expect(registry.get(threads.navigationThreadShellsAtom)).toBe(before);
+    const after = registry.get(threads.navigationThreadShellsAtom);
+    expect(after).not.toBe(before);
+    expect(after[0]).toBe(before[0]);
+    expect(after[1]?.title).toBe("Child streaming");
+    expect(after[2]).toBe(before[2]);
     expect(registry.get(threads.threadShellsAtom)).toHaveLength(3);
+    registry.set(snapshotAtom(environmentId), {
+      ...snapshot,
+      threads: [root, fork],
+      archivedThreads: [{ ...child, archivedAt: child.updatedAt }],
+    });
+    expect(registry.get(threads.navigationThreadShellsAtom).map((thread) => thread.id)).toEqual([
+      root.id,
+      fork.id,
+    ]);
     dispose();
     registry.dispose();
   });

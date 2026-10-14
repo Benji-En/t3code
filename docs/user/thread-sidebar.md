@@ -13,6 +13,10 @@ an existing worktree, use **New thread in this worktree** from the branch toolba
 When you change a new thread's project, T3 Code stays in the current environment
 if that project exists there. Otherwise it selects an environment that has it.
 
+An unsent task keeps its text and attachments when you switch threads. On web
+and desktop, reopen it from the sidebar's drafts. Starting another task leaves
+your previous draft available until you send or discard it.
+
 ### Start without a project
 
 A thread does not need a project. To start one without a project, click **or
@@ -216,6 +220,12 @@ retry and the normal snooze choices.
 
 On web and desktop, use **Agents** to follow work delegated to subagents.
 Stop on a thread also stops the subagents it delegated to.
+
+Subagent threads appear beneath their parent in the sidebar. Successful subtasks
+are automatically archived after their results have been consumed and no work
+remains queued or running. Their conversations remain available in the archive
+and in the parent's lineage. Reopening an archived subtask keeps it visible;
+pinning it also prevents automatic archiving.
 
 Subagent threads started by the agent can't take messages; message the parent
 thread instead. When such a subagent needs an approval or an answer, the parent

@@ -1,5 +1,10 @@
 import { threadPullRequestSearchTerms } from "@t3tools/shared/threadPullRequests";
 import {
+  buildThreadHierarchy,
+  threadHierarchyOwnerKey,
+  threadHierarchyRoots,
+} from "@t3tools/client-runtime/state/threadHierarchy";
+import {
   canSnooze,
   effectiveSnoozed,
   hasQueuedTurnStart,
@@ -239,9 +244,7 @@ export function getThreadListV2OrderedSection(input: {
 }): EnvironmentThreadShell[] {
   // An empty set is treated as absent so `?.` skips building the key.
   const queuedThreadKeys = input.queuedThreadKeys?.size ? input.queuedThreadKeys : undefined;
-  const threads = input.threads.filter((thread) => {
-    if (thread.archivedAt !== null || thread.lineage.relationshipToParent === "subagent")
-      return false;
+  const threads = threadHierarchyRoots(input.threads).filter((thread) => {
     if (
       (input.settlementEnvironmentIds?.has(thread.environmentId) ?? true) &&
       thread.settledOverride === "settled" &&
@@ -269,6 +272,7 @@ export function getThreadListV2OrderedSection(input: {
 }
 
 export interface ThreadListV2Item {
+  readonly depth?: number;
   readonly thread: EnvironmentThreadShell;
   readonly variant: "card" | "slim";
   /** Snoozed-shelf row: shows the wake countdown and offers Wake. */
@@ -411,6 +415,7 @@ export function threadListV2ListItemsAreEqual(
         previous.key === item.key &&
         previous.item.thread === item.item.thread &&
         previous.item.variant === item.item.variant &&
+        previous.item.depth === item.item.depth &&
         previous.item.snoozed === item.item.snoozed &&
         previous.item.pinned === item.item.pinned &&
         previous.snoozeWakeLabelText === item.snoozeWakeLabelText &&
@@ -707,8 +712,7 @@ export function buildThreadListV2Items(input: {
   let nextSnoozeWakeAt: string | null = null;
   // An empty set is treated as absent so `?.` skips building the key.
   const queuedThreadKeys = input.queuedThreadKeys?.size ? input.queuedThreadKeys : undefined;
-  for (const thread of input.threads) {
-    if (thread.archivedAt !== null || thread.lineage.relationshipToParent === "subagent") continue;
+  for (const thread of threadHierarchyRoots(input.threads)) {
     // The server stamps settledOverride for the tail.
     if (input.environmentId !== null && thread.environmentId !== input.environmentId) continue;
     if (projectKeys !== null && !projectKeys.has(`${thread.environmentId}:${thread.projectId}`)) {
@@ -767,7 +771,7 @@ export function buildThreadListV2Items(input: {
     (left, right) =>
       parseTimestampMs(left.snoozedUntil ?? "") - parseTimestampMs(right.snoozedUntil ?? ""),
   );
-  const selectedThreadKey = input.selectedThreadKey ?? null;
+  const selectedThreadKey = threadHierarchyOwnerKey(input.threads, input.selectedThreadKey ?? null);
   const visibleWorking =
     input.workingShelfExpanded === true
       ? orderedWorking
@@ -852,19 +856,45 @@ export function buildThreadListV2Items(input: {
       isLast: false,
     });
   }
-  const last = items.at(-1);
+  const rootItems = new Map(
+    items.map((item) => [`${item.thread.environmentId}:${item.thread.id}`, item]),
+  );
+  const expanded: ThreadListV2Item[] = [];
+  const indexMap = new Map<number, number>();
+  let rootItem: ThreadListV2Item | undefined;
+  let rootIndex = 0;
+  for (const row of buildThreadHierarchy(
+    items.map((item) => item.thread),
+    input.threads,
+  )) {
+    if (row.depth === 0) {
+      indexMap.set(rootIndex++, expanded.length);
+      rootItem = rootItems.get(`${row.thread.environmentId}:${row.thread.id}`);
+    }
+    if (rootItem)
+      expanded.push(
+        row.depth === 0
+          ? rootItem
+          : { ...rootItem, thread: row.thread, depth: row.depth, pinned: false },
+      );
+  }
+  indexMap.set(items.length, expanded.length);
+  const last = expanded.at(-1);
   if (last) {
-    items[items.length - 1] = { ...last, isLast: true };
+    expanded[expanded.length - 1] = { ...last, isLast: true };
   }
   return {
-    items,
+    items: expanded,
     hiddenSettledCount: orderedSettled.length - pagedSettled.length,
     workingCount: orderedWorking.length,
-    workingShelfHeaderIndex,
+    workingShelfHeaderIndex:
+      workingShelfHeaderIndex === null ? null : indexMap.get(workingShelfHeaderIndex)!,
     snoozedCount: orderedSnoozed.length,
-    snoozedShelfHeaderIndex,
+    snoozedShelfHeaderIndex:
+      snoozedShelfHeaderIndex === null ? null : indexMap.get(snoozedShelfHeaderIndex)!,
     settledCount: orderedSettled.length,
-    settledShelfHeaderIndex,
+    settledShelfHeaderIndex:
+      settledShelfHeaderIndex === null ? null : indexMap.get(settledShelfHeaderIndex)!,
     nextSnoozeWakeAt,
   };
 }

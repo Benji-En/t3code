@@ -36,6 +36,8 @@ import * as VcsProcess from "../vcs/VcsProcess.ts";
 import * as WorkspacePaths from "../workspace/WorkspacePaths.ts";
 import { CodexProviderCapabilitiesV2 } from "./Adapters/CodexAdapterV2.ts";
 import * as EventSink from "./EventSink.ts";
+import * as ProjectionStore from "./ProjectionStore.ts";
+import { canAutoArchiveSubagent } from "./SubagentArchiving.ts";
 import * as Orchestrator from "./Orchestrator.ts";
 import { continueRestartedRun } from "./RestartContinuation.ts";
 import * as RuntimeLayer from "./runtimeLayer.ts";
@@ -104,7 +106,11 @@ const layerTestProviderInstanceRegistry = Layer.succeed(
   },
 );
 
-const layerTest = Layer.mergeAll(RuntimeLayer.layer, RuntimeLayer.layerEventSink).pipe(
+const layerTest = Layer.mergeAll(
+  RuntimeLayer.layer,
+  RuntimeLayer.layerEventSink,
+  ProjectionStore.layer,
+).pipe(
   Layer.provideMerge(RuntimeLayer.layerProjectService),
   Layer.provide(
     Layer.mock(WorkspacePaths.WorkspacePaths)({
@@ -293,6 +299,231 @@ const seedParentWithTerminalTask = (input: {
   });
 
 it.layer(layerTest)("delegated completion delivery repairs", (it) => {
+  it.effect(
+    "archives consumed successful subtasks and preserves resumed or reopened children",
+    () =>
+      Effect.gen(function* () {
+        const orchestrator = yield* Orchestrator.OrchestratorV2;
+        const sink = yield* EventSink.EventSinkV2;
+        const projections = yield* ProjectionStore.ProjectionStoreV2;
+        const now = yield* DateTime.now;
+        const parentId = ThreadId.make("archive-parent");
+        const childId = ThreadId.make("archive-child");
+        const runId = RunId.make("archive-parent-run");
+        const taskId = NodeId.make("archive-task");
+        const projectId = ProjectId.make("archive-project");
+        yield* seedParentWithTerminalTask({
+          threadId: parentId,
+          projectId,
+          runId,
+          rootNodeId: NodeId.make("archive-root"),
+          taskId,
+          deliveryState: "delivered",
+          now,
+        });
+        yield* orchestrator.dispatch({
+          type: "thread.create",
+          commandId: CommandId.make("archive-create-child"),
+          threadId: childId,
+          projectId,
+          title: "Finished child",
+          modelSelection,
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          branch: null,
+          worktreePath: null,
+          createdBy: "agent",
+          creationSource: "mcp",
+        });
+        const parent = yield* projections.getThreadRecords(parentId, ["runs", "subagents"]);
+        const child = yield* projections.getThread(childId);
+        const task = { ...parent.subagents[0]!, childThreadId: childId };
+        const childRun = {
+          ...parent.runs[0]!,
+          id: RunId.make("archive-child-run"),
+          threadId: childId,
+          status: "completed" as const,
+          delegatedTaskId: taskId,
+          completedAt: now,
+          rootNodeId: null,
+          activeAttemptId: null,
+        };
+        yield* sink.write({
+          commandId: CommandId.make("archive-seed-child"),
+          events: [
+            {
+              id: EventId.make("archive-child-lineage"),
+              type: "thread.metadata-updated",
+              threadId: childId,
+              occurredAt: now,
+              payload: {
+                ...child,
+                lineage: {
+                  parentThreadId: parentId,
+                  rootThreadId: parentId,
+                  relationshipToParent: "subagent",
+                },
+              },
+            },
+            {
+              id: EventId.make("archive-child-finished"),
+              type: "run.updated",
+              threadId: childId,
+              runId: childRun.id,
+              occurredAt: now,
+              payload: childRun,
+            },
+            {
+              id: EventId.make("archive-task-child"),
+              type: "subagent.updated",
+              threadId: parentId,
+              nodeId: taskId,
+              occurredAt: now,
+              payload: task,
+            },
+          ],
+        });
+        // Provider delivery alone is not consumption while the owner is still working.
+        assert.deepEqual(yield* projections.getSubagentArchiveCandidates(), []);
+        yield* orchestrator.dispatch({
+          type: "thread.archive",
+          commandId: CommandId.make("archive-too-early"),
+          threadId: childId,
+          onlyIfUnusedSubagent: true,
+        });
+        assert.equal((yield* projections.getThread(childId)).archivedAt, null);
+        yield* orchestrator.dispatch({
+          type: "delegated_task.completion-delivery.acknowledge",
+          commandId: CommandId.make("archive-consume"),
+          parentThreadId: parentId,
+          taskId,
+          observedByRunId: runId,
+        });
+        assert.deepEqual(yield* projections.getSubagentArchiveCandidates(parentId), [childId]);
+        const ready = yield* projections.getThreadShell(childId);
+        assert(ready !== null);
+        const consumed = yield* projections.getThreadRecords(parentId, ["runs", "subagents"]);
+        assert.equal(canAutoArchiveSubagent(ready, consumed), true);
+        assert.equal(
+          canAutoArchiveSubagent(
+            { ...ready, status: "running", activityRunStatus: "running" },
+            consumed,
+          ),
+          false,
+        );
+        assert.equal(
+          canAutoArchiveSubagent(
+            { ...ready, pendingBackgroundTasks: [{ taskId: "nested", kind: "subagent" }] },
+            consumed,
+          ),
+          false,
+        );
+        assert.equal(
+          canAutoArchiveSubagent(ready, {
+            ...consumed,
+            subagents: [{ ...task, status: "failed" }],
+          }),
+          false,
+        );
+        assert.equal(
+          canAutoArchiveSubagent(ready, {
+            ...consumed,
+            subagents: [{ ...task, origin: "provider_native" }],
+          }),
+          false,
+        );
+        assert.equal(
+          canAutoArchiveSubagent(ready, {
+            ...consumed,
+            runs: consumed.runs.map((run) => ({ ...run, status: "completed" as const })),
+            subagents: [{ ...task, origin: "provider_native" }],
+          }),
+          true,
+        );
+        const nativeParent = {
+          ...consumed,
+          runs: consumed.runs.map((run) => ({ ...run, status: "completed" as const })),
+          subagents: [{ ...task, origin: "provider_native" as const }],
+        };
+        const nativeChild = { ...ready, status: "idle" as const, latestRunId: null };
+        assert.equal(canAutoArchiveSubagent(nativeChild, nativeParent), true);
+        assert.equal(
+          canAutoArchiveSubagent(nativeChild, nativeParent, {
+            runs: [],
+            providerTurns: [{ status: "running" }],
+            subagents: [],
+          }),
+          false,
+        );
+        assert.equal(
+          canAutoArchiveSubagent(ready, consumed, {
+            runs: [{ status: "queued" }],
+            providerTurns: [],
+            subagents: [],
+          }),
+          false,
+        );
+        assert.equal(canAutoArchiveSubagent({ ...ready, pinnedAt: now }, consumed), false);
+        // The archive command rechecks state after the candidate read.
+        yield* sink.write({
+          commandId: CommandId.make("archive-resumed"),
+          events: [
+            {
+              id: EventId.make("archive-resumed-event"),
+              type: "run.updated",
+              threadId: childId,
+              runId: childRun.id,
+              occurredAt: now,
+              payload: { ...childRun, status: "running", completedAt: null },
+            },
+          ],
+        });
+        yield* orchestrator.dispatch({
+          type: "thread.archive",
+          commandId: CommandId.make("archive-stale-candidate"),
+          threadId: childId,
+          onlyIfUnusedSubagent: true,
+        });
+        assert.equal((yield* projections.getThread(childId)).archivedAt, null);
+        yield* sink.write({
+          commandId: CommandId.make("archive-finished-again"),
+          events: [
+            {
+              id: EventId.make("archive-finished-again-event"),
+              type: "run.updated",
+              threadId: childId,
+              runId: childRun.id,
+              occurredAt: now,
+              payload: childRun,
+            },
+          ],
+        });
+        yield* orchestrator.dispatch({
+          type: "thread.archive",
+          commandId: CommandId.make("archive-unused-child"),
+          threadId: childId,
+          onlyIfUnusedSubagent: true,
+        });
+        assert((yield* projections.getThread(childId)).archivedAt !== null);
+        assert.equal(
+          (yield* projections.getThreadRecords(childId, ["runs"])).runs[0]?.id,
+          childRun.id,
+        );
+        yield* orchestrator.dispatch({
+          type: "thread.unarchive",
+          commandId: CommandId.make("archive-reopen-child"),
+          threadId: childId,
+        });
+        assert.deepEqual(yield* projections.getSubagentArchiveCandidates(), []);
+        yield* orchestrator.dispatch({
+          type: "thread.archive",
+          commandId: CommandId.make("archive-reopened-retained"),
+          threadId: childId,
+          onlyIfUnusedSubagent: true,
+        });
+        assert.equal((yield* projections.getThread(childId)).archivedAt, null);
+      }),
+  );
   it.effect("acceptance batches pending siblings without acknowledging their results", () =>
     Effect.gen(function* () {
       const orchestrator = yield* Orchestrator.OrchestratorV2;

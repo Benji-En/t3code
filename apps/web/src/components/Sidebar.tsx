@@ -11,6 +11,10 @@ import {
 import { discardComposerDraft } from "../lib/discardComposerDraft";
 import { requestCustomSnooze } from "./CustomSnoozeDialog";
 import { useSupportsMultiplePullRequests } from "~/hooks/useSupportsMultiplePullRequests";
+import {
+  buildThreadHierarchy,
+  threadHierarchyOwnerKey,
+} from "@t3tools/client-runtime/state/threadHierarchy";
 import { resolveThreadCurrentPullRequestLink } from "@t3tools/shared/threadPullRequests";
 import { useAtomValue } from "@effect/atom-react";
 import { replaceComposerContextReferences } from "@t3tools/shared/composerContextReferences";
@@ -1108,6 +1112,7 @@ const dropVerbBadge: Record<SidebarDropVerb, ReactNode> = {
 };
 
 const SidebarThreadRow = memo(function SidebarThreadRow(props: {
+  depth?: number;
   thread: SidebarThreadSummary;
   variant: "card" | "slim";
   // Settled rows un-settle, snoozed rows wake, and cards settle.
@@ -1629,7 +1634,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
         },
         ...sortable.listeners,
       }
-    : {};
+    : { style: undefined };
   // Sweeps reuse the corresponding row-drop action badge.
   const destinationVerb = sortable?.isDragging
     ? props.dropVerb
@@ -1799,6 +1804,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
       <li
         data-thread-item={threadKey}
         {...sortableRootProps}
+        style={{ ...sortableRootProps.style, marginLeft: Math.min(props.depth ?? 0, 6) * 14 }}
         {...(fileDropHandlers ?? {})}
         className={cn(
           // Matches the h-9 row so unrendered rows never shift the list when they paint.
@@ -1964,6 +1970,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
     <li
       data-thread-item={threadKey}
       {...sortableRootProps}
+      style={{ ...sortableRootProps.style, marginLeft: Math.min(props.depth ?? 0, 6) * 14 }}
       {...(fileDropHandlers ?? {})}
       className={cn(
         // Matches the h-[4.875rem] content box; the py-0.5 padding is added on top.
@@ -2848,8 +2855,7 @@ export default function Sidebar() {
     // memo exactly at the next wake boundary.
     void snoozeWakeTick;
     const preciseNow = new Date().toISOString();
-    // Subagent child threads live in the parent's Agents surface, not the
-    // sidebar roster (v2 models them as real threads with lineage).
+    // Shelves contain roots; child rows follow their owner within that shelf.
     const visible = filterSidebarV2VisibleThreads(threads, scopedProjectKeys);
     inboxReturns.observe(workingShelfEnabled ? threads : null);
     const pinned: EnvironmentThreadShell[] = [];
@@ -3029,6 +3035,10 @@ export default function Sidebar() {
   // filter context changes so a scope/search flip never inherits a deep
   // page state.
   const [settledVisibleCount, setSettledVisibleCount] = useState(SETTLED_TAIL_INITIAL_COUNT);
+  const shelfRouteThreadKey = useMemo(
+    () => threadHierarchyOwnerKey(threads, routeThreadKey),
+    [threads, routeThreadKey],
+  );
   const settledResetKey = projectScopeKey ?? "all";
   const lastSettledResetKeyRef = useRef(settledResetKey);
   if (lastSettledResetKeyRef.current !== settledResetKey) {
@@ -3041,17 +3051,18 @@ export default function Sidebar() {
     // The open thread must never hide under "Show more": navigating into a
     // deep settled thread (search, deep link) pulls its row into the visible
     // tail so the highlight and the un-settle affordance stay reachable.
-    if (routeThreadKey !== null) {
+    if (shelfRouteThreadKey !== null) {
       const routeThread = settledThreads
         .slice(settledVisibleCount)
         .find(
           (thread) =>
-            scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)) === routeThreadKey,
+            scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)) ===
+            shelfRouteThreadKey,
         );
       if (routeThread !== undefined) visible.push(routeThread);
     }
     return visible;
-  }, [routeThreadKey, settledThreads, settledVisibleCount]);
+  }, [shelfRouteThreadKey, settledThreads, settledVisibleCount]);
   const hiddenSettledCount = settledThreads.length - visibleSettledThreads.length;
   const showMoreSettled = useCallback(
     () => setSettledVisibleCount((count) => count + SETTLED_TAIL_PAGE_COUNT),
@@ -3068,13 +3079,13 @@ export default function Sidebar() {
   );
   const renderedSettledThreads = useMemo(() => {
     if (settledShelfExpanded) return visibleSettledThreads;
-    if (routeThreadKey === null) return EMPTY_THREADS;
+    if (shelfRouteThreadKey === null) return EMPTY_THREADS;
     const routeThread = visibleSettledThreads.find(
       (thread) =>
-        scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)) === routeThreadKey,
+        scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)) === shelfRouteThreadKey,
     );
     return routeThread === undefined ? EMPTY_THREADS : [routeThread];
-  }, [routeThreadKey, settledShelfExpanded, visibleSettledThreads]);
+  }, [shelfRouteThreadKey, settledShelfExpanded, visibleSettledThreads]);
 
   // The snoozed shelf is collapsed by default: out of the way, never gone.
   // Collapsed threads don't render (and so don't participate in jump
@@ -3094,13 +3105,13 @@ export default function Sidebar() {
     // snoozed thread reached by route (deep link, open before snoozing
     // elsewhere) keeps its row — with highlight and wake affordance — same
     // exception the settled tail's "Show more" makes.
-    if (routeThreadKey === null) return EMPTY_THREADS;
+    if (shelfRouteThreadKey === null) return EMPTY_THREADS;
     const routeThread = snoozedThreads.find(
       (thread) =>
-        scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)) === routeThreadKey,
+        scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)) === shelfRouteThreadKey,
     );
     return routeThread === undefined ? EMPTY_THREADS : [routeThread];
-  }, [routeThreadKey, snoozedShelfExpanded, snoozedThreads]);
+  }, [shelfRouteThreadKey, snoozedShelfExpanded, snoozedThreads]);
 
   // The Working shelf (beta) collapses the same way, with the same route
   // exception: sending a message folds the open thread into the shelf, and
@@ -3116,15 +3127,15 @@ export default function Sidebar() {
   );
   const visibleWorkingThreads = useMemo(() => {
     if (workingShelfExpanded) return workingThreads;
-    if (routeThreadKey === null) return EMPTY_THREADS;
+    if (shelfRouteThreadKey === null) return EMPTY_THREADS;
     const routeThread = workingThreads.find(
       (thread) =>
-        scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)) === routeThreadKey,
+        scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)) === shelfRouteThreadKey,
     );
     return routeThread === undefined ? EMPTY_THREADS : [routeThread];
-  }, [routeThreadKey, workingShelfExpanded, workingThreads]);
+  }, [shelfRouteThreadKey, workingShelfExpanded, workingThreads]);
 
-  const orderedThreads = useMemo(
+  const rootThreads = useMemo(
     () => [
       ...pinnedThreads,
       ...activeThreads,
@@ -3140,6 +3151,32 @@ export default function Sidebar() {
       renderedSettledThreads,
     ],
   );
+  const hierarchyRows = useMemo(
+    () => buildThreadHierarchy(rootThreads, threads),
+    [rootThreads, threads],
+  );
+  const orderedThreads = useMemo(() => hierarchyRows.map((row) => row.thread), [hierarchyRows]);
+  const hierarchyByKey = useMemo(
+    () =>
+      new Map(
+        hierarchyRows.map((row) => [
+          scopedThreadKey(scopeThreadRef(row.thread.environmentId, row.thread.id)),
+          row,
+        ]),
+      ),
+    [hierarchyRows],
+  );
+  const childrenByRootKey = useMemo(() => {
+    const children = new Map<string, typeof hierarchyRows>();
+    let rootKey: string | null = null;
+    for (const row of hierarchyRows) {
+      if (row.depth === 0) {
+        rootKey = scopedThreadKey(scopeThreadRef(row.thread.environmentId, row.thread.id));
+        children.set(rootKey, []);
+      } else if (rootKey !== null) children.get(rootKey)!.push(row);
+    }
+    return children;
+  }, [hierarchyRows]);
   const orderedThreadKeys = useMemo(
     () =>
       orderedThreads.map((thread) =>
@@ -5348,6 +5385,7 @@ export default function Sidebar() {
                             // sortable wrapper keeps its identity during a drag.
                             key={`${threadKey}:${rowVariant}`}
                             thread={thread}
+                            depth={hierarchyByKey.get(threadKey)?.depth ?? 0}
                             variant={rowVariant}
                             // Snoozed rows wake, settled rows un-settle, and cards settle.
                             variantAction={
@@ -5484,6 +5522,9 @@ export default function Sidebar() {
                       for (const item of sidebarListItems) {
                         if (item.kind === "thread") {
                           items.push(renderThreadRow(threadByKey.get(item.key)!, item.section));
+                          for (const row of childrenByRootKey.get(item.key) ?? []) {
+                            items.push(renderThreadRowInner(row.thread, item.section));
+                          }
                           continue;
                         }
                         switch (item.marker) {

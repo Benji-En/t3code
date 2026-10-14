@@ -271,6 +271,10 @@
       "types": "./src/state/subagentRuntime.ts",
       "default": "./src/state/subagentRuntime.ts"
     },
+    "./state/threadHierarchy": {
+      "types": "./src/state/threadHierarchy.ts",
+      "default": "./src/state/threadHierarchy.ts"
+    },
     "./state/thread-sort": {
       "types": "./src/state/threadSort.ts",
       "default": "./src/state/threadSort.ts"

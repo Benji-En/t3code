@@ -502,6 +502,10 @@ function makeBranchPullRequest(state: "open" | "closed" | "merged") {
 }
 
 interface HarnessOptions {
+  readonly archiveCandidates?: ReadonlyArray<ThreadId>;
+  readonly onArchive?: (
+    command: Extract<OrchestrationV2Command, { type: "thread.archive" }>,
+  ) => Effect.Effect<void>;
   readonly snapshot: SettlementSnapshot;
   readonly settings?: ContractServerSettings;
   readonly branchPullRequest?: GitManager.GitManager["Service"]["branchPullRequest"];
@@ -579,6 +583,9 @@ const makeHarness = Effect.fn("makeThreadSettlementHarness")(function* (options:
     });
 
   const dispatch: Orchestrator.OrchestratorV2Shape["dispatch"] = (command) => {
+    if (command.type === "thread.archive" && options.onArchive) {
+      return options.onArchive(command).pipe(Effect.as({ sequence: 1, storedEvents: [] }));
+    }
     if (command.type !== "thread.auto-settle") {
       return Effect.die(new Error(`Unexpected command: ${command.type}`));
     }
@@ -606,6 +613,7 @@ const makeHarness = Effect.fn("makeThreadSettlementHarness")(function* (options:
       listShells: () => Ref.get(snapshots).pipe(Effect.map((snapshot) => snapshot.projects)),
     }),
     Layer.mock(ProjectionStore.ProjectionStoreV2)({
+      getSubagentArchiveCandidates: () => Effect.succeed(options.archiveCandidates ?? []),
       getSettlementCandidates: (threadId) =>
         Ref.update(candidateReads, (reads) => [...reads, threadId]).pipe(
           Effect.andThen(Ref.updateAndGet(snapshotReadCount, (count) => count + 1)),
@@ -694,6 +702,37 @@ const startHarness = Effect.fn("startThreadSettlementHarness")(function* (
 });
 
 describe("ThreadSettlementServiceV2 worker", () => {
+  it.effect(
+    "automatically archives unused subtasks even when automatic settlement is disabled",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const archived =
+            yield* Deferred.make<Extract<OrchestrationV2Command, { type: "thread.archive" }>>();
+          const childId = ThreadId.make("completed-unused-child");
+          const fixture = yield* makeHarness({
+            snapshot: makeSnapshot([], []),
+            settings: {
+              ...DEFAULT_SERVER_SETTINGS,
+              sidebarAutoSettleOnMerge: false,
+              sidebarAutoSettleAfterDays: null,
+            },
+            archiveCandidates: [childId],
+            onArchive: (command) => Deferred.succeed(archived, command).pipe(Effect.asVoid),
+          });
+          yield* Effect.gen(function* () {
+            const service = yield* ThreadSettlementService.ThreadSettlementServiceV2;
+            yield* service.start();
+            yield* Deferred.succeed(fixture.activation, undefined);
+            const command = yield* Deferred.await(archived);
+            yield* service.drain;
+            expect(command.threadId).toBe(childId);
+            expect(command.onlyIfUnusedSubagent).toBe(true);
+            expect(yield* Ref.get(fixture.snapshotReadCount)).toBe(0);
+          }).pipe(Effect.provide(fixture.layer));
+        }),
+      ),
+  );
   it.effect("settles a merged pull request stored only in the thread links", () =>
     Effect.scoped(
       Effect.gen(function* () {

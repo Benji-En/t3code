@@ -1698,7 +1698,7 @@ describe("cross-section thread drops", () => {
   });
 });
 
-it("excludes subagents from navigation, search and ordering while retaining user forks", () => {
+it("nests subagents beneath their owner while retaining user forks as independent rows", () => {
   const root = makeThread({ id: ThreadId.make("root"), title: "Root" });
   const child = makeThread({
     id: ThreadId.make("child"),
@@ -1715,7 +1715,11 @@ it("excludes subagents from navigation, search and ordering while retaining user
     buildThreadListV2Items({ threads, environmentId: null, searchQuery: "", now: NOW }).items.map(
       (item) => item.thread.id,
     ),
-  ).toEqual([fork.id, root.id]);
+  ).toEqual([fork.id, root.id, child.id]);
+  expect(
+    buildThreadListV2Items({ threads, environmentId: null, searchQuery: "", now: NOW }).items.at(-1)
+      ?.depth,
+  ).toBe(1);
   expect(
     buildThreadListV2Items({ threads, environmentId: null, searchQuery: "Child", now: NOW }).items,
   ).toEqual([]);
@@ -1724,6 +1728,55 @@ it("excludes subagents from navigation, search and ordering while retaining user
       (thread) => thread.id,
     ),
   ).toEqual([fork.id, root.id]);
+});
+
+it("keeps nested children with their parent's shelf and exposes a reopened child of an archived parent", () => {
+  const root = makeThread({ id: ThreadId.make("owner"), title: "Owner" });
+  const child = makeThread({
+    id: ThreadId.make("nested-child"),
+    title: "Child",
+    lineage: { parentThreadId: root.id, rootThreadId: root.id, relationshipToParent: "subagent" },
+  });
+  const grandchild = makeThread({
+    id: ThreadId.make("grandchild"),
+    title: "Grandchild",
+    lineage: { parentThreadId: child.id, rootThreadId: root.id, relationshipToParent: "subagent" },
+  });
+  const settled = makeThread({
+    id: ThreadId.make("settled-owner"),
+    title: "Settled",
+    settledOverride: "settled",
+    settledAt: NOW,
+  });
+  const layout = buildThreadListV2Items({
+    threads: [grandchild, settled, child, root],
+    environmentId: null,
+    searchQuery: "",
+    now: NOW,
+  });
+  expect(layout.items.map((item) => [item.thread.id, item.depth ?? 0])).toEqual([
+    [root.id, 0],
+    [child.id, 1],
+    [grandchild.id, 2],
+    [settled.id, 0],
+  ]);
+  expect(layout.settledShelfHeaderIndex).toBe(3);
+  const collapsed = buildThreadListV2Items({
+    threads: [{ ...root, settledOverride: "settled", settledAt: NOW }, child, grandchild],
+    environmentId: null,
+    searchQuery: "",
+    now: NOW,
+    settledShelfExpanded: false,
+    selectedThreadKey: `${environmentId}:${grandchild.id}`,
+  });
+  expect(collapsed.items.map((item) => item.thread.id)).toEqual([root.id, child.id, grandchild.id]);
+  const reopened = buildThreadListV2Items({
+    threads: [{ ...root, archivedAt: NOW }, child],
+    environmentId: null,
+    searchQuery: "",
+    now: NOW,
+  });
+  expect(reopened.items.map((item) => item.thread.id)).toEqual([child.id]);
 });
 
 /* ─── Recycled-list equality + per-row clock scoping ─────────────────── */

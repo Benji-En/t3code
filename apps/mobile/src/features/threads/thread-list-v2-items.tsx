@@ -494,6 +494,7 @@ export const ThreadListV2PendingRow = memo(function ThreadListV2PendingRow(props
 });
 
 export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
+  readonly depth?: number;
   readonly thread: EnvironmentThreadShell;
   readonly variant: "card" | "slim";
   /** A message for this thread is waiting in the outbox. */
@@ -1206,7 +1207,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
           close();
           onSelectThread(thread);
         }}
-        style={rowAppearance.cardStyle}
+        style={[rowAppearance.cardStyle, { marginLeft: Math.min(props.depth ?? 0, 6) * 14 }]}
       >
         {sidebarPane ? (
           fadedCardContent
@@ -1239,7 +1240,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
           close();
           onSelectThread(thread);
         }}
-        style={rowAppearance.style}
+        style={[rowAppearance.style, { marginLeft: Math.min(props.depth ?? 0, 6) * 14 }]}
       >
         {/* Settled history recedes: dimmed favicon + muted title. */}
         <View

@@ -315,6 +315,30 @@ export const make = Effect.gen(function* () {
     threadId?: ThreadId,
   ) {
     const settings = yield* settingsService.getSettings;
+    const archiveCandidates = yield* projections.getSubagentArchiveCandidates(threadId);
+    yield* Effect.forEach(
+      archiveCandidates,
+      (id) =>
+        Effect.gen(function* () {
+          const uuid = yield* crypto.randomUUIDv4;
+          yield* orchestrator.dispatch({
+            type: "thread.archive",
+            commandId: CommandId.make(`server:auto-archive-subagent:${id}:${uuid}`),
+            threadId: id,
+            onlyIfUnusedSubagent: true,
+          });
+        }).pipe(
+          Effect.catchCause((cause) =>
+            Cause.hasInterruptsOnly(cause)
+              ? Effect.failCause(cause)
+              : Effect.logWarning("automatic subtask archiving skipped", {
+                  threadId: id,
+                  cause: Cause.pretty(cause),
+                }),
+          ),
+        ),
+      { concurrency: 8, discard: true },
+    );
     if (!autoSettlementConfigured(settings)) {
       return;
     }
@@ -604,6 +628,10 @@ export const make = Effect.gen(function* () {
 
   const processEvent = (event: OrchestrationV2DomainEvent) => {
     switch (event.type) {
+      case "subagent.updated":
+        return event.payload.status === "completed" && event.payload.childThreadId !== null
+          ? worker.enqueue(event.threadId)
+          : Effect.void;
       case "thread.settled":
         return cleanUpSettledThread(event.threadId);
       case "thread.pull-request-synced":

@@ -1,4 +1,5 @@
 import { projectTurnItemForWire } from "./WireProjection.ts";
+import { canAutoArchiveSubagent } from "./SubagentArchiving.ts";
 import * as Stream from "effect/Stream";
 import { makeThreadFind, findProjectedThreadItems } from "./ThreadFind.ts";
 import type {
@@ -406,6 +407,9 @@ export interface ProjectionStoreV2Shape {
   readonly getSettlementCandidates: (
     threadId?: ThreadId,
   ) => Effect.Effect<ReadonlyArray<ProjectionSettlementCandidate>, ProjectionStoreV2Error>;
+  readonly getSubagentArchiveCandidates: (
+    threadId?: ThreadId,
+  ) => Effect.Effect<ReadonlyArray<ThreadId>, ProjectionStoreV2Error>;
   /**
    * Active (not deleted, not archived) threads with at least one pull request
    * link, in shell snapshot order, or only `threadId` when given. Skips run,
@@ -5469,6 +5473,36 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
         return { providerThreadsByThreadId, pendingTurnItemsByThreadId };
       });
 
+    const getSubagentArchiveCandidates: ProjectionStoreV2Shape["getSubagentArchiveCandidates"] = (
+      threadId,
+    ) =>
+      sql<{ thread_id: string }>`
+        SELECT DISTINCT child.thread_id FROM orchestration_v2_projection_threads child
+        JOIN orchestration_v2_projection_subagents task ON task.child_thread_id = child.thread_id
+        LEFT JOIN orchestration_v2_projection_runs owner ON owner.run_id = task.run_id
+        WHERE child.deleted_at IS NULL AND task.status = 'completed'
+          AND json_extract(child.payload_json, '$.lineage.relationshipToParent') = 'subagent'
+          AND json_extract(child.payload_json, '$.archivedAt') IS NULL
+          AND json_extract(child.payload_json, '$.pinnedAt') IS NULL
+          AND json_extract(child.payload_json, '$.autoSettleDisabledAt') IS NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM orchestration_v2_projection_runs active
+            WHERE active.thread_id = child.thread_id
+              AND active.status IN ('queued', 'preparing', 'starting', 'running', 'waiting')
+          )
+          AND (
+            json_extract(task.payload_json, '$.completionDelivery.state') IN ('acknowledged', 'disposed')
+            OR (owner.status = 'completed' AND (
+              json_extract(task.payload_json, '$.origin') = 'provider_native'
+              OR json_extract(task.payload_json, '$.completionDelivery.state') = 'delivered'
+            ))
+          )
+          ${threadId === undefined ? sql`` : sql`AND (child.thread_id = ${threadId} OR task.thread_id = ${threadId})`}
+      `.pipe(
+        Effect.map((rows) => rows.map((row) => ThreadId.make(row.thread_id))),
+        Effect.mapError((cause) => new ProjectionStoreSetupError({ cause })),
+      );
+
     const getSettlementCandidates: ProjectionStoreV2Shape["getSettlementCandidates"] = (threadId) =>
       sql
         .withTransaction(
@@ -5945,6 +5979,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
       getThreadShell,
       getThread,
       getSettlementCandidates,
+      getSubagentArchiveCandidates,
       getThreadsWithPullRequests,
       getThreadProjection,
       getTurnStartContext,
@@ -6065,6 +6100,29 @@ export const layerMemory: Layer.Layer<ProjectionStoreV2> = Layer.effect(
           }
           return projection.thread;
         }),
+      getSubagentArchiveCandidates: (threadId) =>
+        Ref.get(replayState).pipe(
+          Effect.map((state) =>
+            [...state.projections.values()].flatMap((parent) =>
+              parent.subagents
+                .filter(
+                  (task) =>
+                    task.childThreadId !== null &&
+                    task.status === "completed" &&
+                    (threadId === undefined ||
+                      task.childThreadId === threadId ||
+                      parent.thread.id === threadId),
+                )
+                .flatMap((task) => {
+                  const child = state.projections.get(task.childThreadId!);
+                  return child &&
+                    canAutoArchiveSubagent(threadShellFromProjection(child), parent, child)
+                    ? [child.thread.id]
+                    : [];
+                }),
+            ),
+          ),
+        ),
       getSettlementCandidates: (threadId) =>
         Effect.gen(function* () {
           const projections = (yield* Ref.get(replayState)).projections;
