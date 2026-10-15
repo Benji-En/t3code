@@ -57,10 +57,18 @@ Fully quit the fork before backing up `%LOCALAPPDATA%\T3Code-Benji`. Keep backup
 private because they include credentials and conversations. Existing Codex and
 Claude installations and profiles are separate.
 
-Commit or stash local changes, fetch `upstream`, and review a normal merge of
-`upstream/main` in GitHub Desktop. Then repeat the build and installation commands
-above. Resolve conflicts before building; do not force a fast-forward over fork
-changes. After appearance-only rebuilds, **Ctrl+R in T3** reloads the client.
+Preserve local changes in Git, fetch `upstream`, and merge `upstream/main` without
+dropping the fork's custom commits. For unattended updates, prepare and validate
+the merge and build in a separate checkout before promoting it. Then repeat the
+build and installation commands above. Resolve conflicts before building.
+
+On Windows, a running app can lock native package files. If dependency import
+reports `EPERM`, retry the isolated checkout with copied packages and a fresh
+virtual store: pass `-- --package-import-method=copy
+--virtual-store-dir=node_modules/.pnpm-update` to `vp install`. Finish installation,
+including the declared dependency patches, before validating or publishing.
+
+After appearance-only rebuilds, **Ctrl+R in T3** reloads the client.
 Native shell or launcher changes require a full quit and relaunch.
 
 To undo the appearance, choose another theme. To restore a profile backup, fully
