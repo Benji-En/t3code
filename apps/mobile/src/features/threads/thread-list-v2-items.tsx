@@ -495,6 +495,10 @@ export const ThreadListV2PendingRow = memo(function ThreadListV2PendingRow(props
 
 export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   readonly depth?: number;
+  readonly subtaskCount?: number;
+  readonly subtasksExpanded?: boolean;
+  readonly onToggleSubtasks?: (threadKey: string) => void;
+  readonly subtasksDisabled?: boolean;
   readonly thread: EnvironmentThreadShell;
   readonly variant: "card" | "slim";
   /** A message for this thread is waiting in the outbox. */
@@ -1207,7 +1211,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
           close();
           onSelectThread(thread);
         }}
-        style={[rowAppearance.cardStyle, { marginLeft: Math.min(props.depth ?? 0, 6) * 14 }]}
+        style={[rowAppearance.cardStyle, { marginLeft: Math.min(props.depth ?? 0, 5) * 28 }]}
       >
         {sidebarPane ? (
           fadedCardContent
@@ -1240,7 +1244,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
           close();
           onSelectThread(thread);
         }}
-        style={[rowAppearance.style, { marginLeft: Math.min(props.depth ?? 0, 6) * 14 }]}
+        style={[rowAppearance.style, { marginLeft: Math.min(props.depth ?? 0, 5) * 28 }]}
       >
         {/* Settled history recedes: dimmed favicon + muted title. */}
         <View
@@ -1302,7 +1306,34 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
       </RowPressable>
     );
 
-  if (!canOperateThread) return rowContent(() => {});
+  const subtaskGroupHeader =
+    props.subtaskCount && props.onToggleSubtasks ? (
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`${props.subtasksExpanded ? "Collapse" : "Expand"} subtasks`}
+        accessibilityState={{ expanded: props.subtasksExpanded, disabled: props.subtasksDisabled }}
+        disabled={props.subtasksDisabled}
+        onPress={() => props.onToggleSubtasks?.(`${thread.environmentId}:${thread.id}`)}
+        className="min-h-11 flex-row items-center gap-1.5 px-3"
+        style={{ marginLeft: Math.min((props.depth ?? 0) + 1, 5) * 28 }}
+      >
+        <SymbolView
+          name={props.subtasksExpanded ? "chevron.down" : "chevron.right"}
+          size={10}
+          tintColorClassName="accent-muted-foreground"
+          className="opacity-60"
+        />
+        <Text className="text-[11px] text-muted-foreground/60">Subtasks</Text>
+        <Text className="text-[11px] text-muted-foreground/60">({props.subtaskCount})</Text>
+      </Pressable>
+    ) : null;
+  if (!canOperateThread)
+    return (
+      <View>
+        {rowContent(() => {})}
+        {subtaskGroupHeader}
+      </View>
+    );
 
   return (
     <View collapsable={false}>
@@ -1359,6 +1390,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
           </ControlPillMenu>
         )}
       </ThreadSwipeable>
+      {subtaskGroupHeader}
     </View>
   );
 });

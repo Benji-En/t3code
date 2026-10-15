@@ -272,6 +272,8 @@ export function getThreadListV2OrderedSection(input: {
 }
 
 export interface ThreadListV2Item {
+  readonly subtaskCount?: number;
+  readonly subtasksExpanded?: boolean;
   readonly depth?: number;
   readonly thread: EnvironmentThreadShell;
   readonly variant: "card" | "slim";
@@ -416,6 +418,8 @@ export function threadListV2ListItemsAreEqual(
         previous.item.thread === item.item.thread &&
         previous.item.variant === item.item.variant &&
         previous.item.depth === item.item.depth &&
+        previous.item.subtaskCount === item.item.subtaskCount &&
+        previous.item.subtasksExpanded === item.item.subtasksExpanded &&
         previous.item.snoozed === item.item.snoozed &&
         previous.item.pinned === item.item.pinned &&
         previous.snoozeWakeLabelText === item.snoozeWakeLabelText &&
@@ -645,6 +649,7 @@ function sortSettledThreadsReusingLast(
  * the settled recency tail, matching the web v2 list.
  */
 export function buildThreadListV2Items(input: {
+  readonly subtasksExpandedByKey?: Readonly<Record<string, boolean>>;
   readonly pendingOrder?: PendingThreadOrder | null;
   readonly threads: ReadonlyArray<EnvironmentThreadShell>;
   readonly environmentId: EnvironmentId | null;
@@ -863,20 +868,41 @@ export function buildThreadListV2Items(input: {
   const indexMap = new Map<number, number>();
   let rootItem: ThreadListV2Item | undefined;
   let rootIndex = 0;
+  const subtaskCounts = new Map<string, number>();
   for (const row of buildThreadHierarchy(
     items.map((item) => item.thread),
     input.threads,
+  )) {
+    if (row.depth === 0) continue;
+    const parentKey = `${row.thread.environmentId}:${row.thread.lineage.parentThreadId}`;
+    subtaskCounts.set(parentKey, (subtaskCounts.get(parentKey) ?? 0) + 1);
+  }
+  for (const row of buildThreadHierarchy(
+    items.map((item) => item.thread),
+    input.threads,
+    input.subtasksExpandedByKey,
   )) {
     if (row.depth === 0) {
       indexMap.set(rootIndex++, expanded.length);
       rootItem = rootItems.get(`${row.thread.environmentId}:${row.thread.id}`);
     }
-    if (rootItem)
-      expanded.push(
+    if (rootItem) {
+      const key = `${row.thread.environmentId}:${row.thread.id}`;
+      const subtaskCount = subtaskCounts.get(key) ?? 0;
+      const item =
         row.depth === 0
           ? rootItem
-          : { ...rootItem, thread: row.thread, depth: row.depth, pinned: false },
+          : { ...rootItem, thread: row.thread, depth: row.depth, pinned: false };
+      expanded.push(
+        subtaskCount > 0
+          ? {
+              ...item,
+              subtaskCount,
+              subtasksExpanded: input.subtasksExpandedByKey?.[key] !== false,
+            }
+          : item,
       );
+    }
   }
   indexMap.set(items.length, expanded.length);
   const last = expanded.at(-1);

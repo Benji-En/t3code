@@ -1761,6 +1761,33 @@ it("keeps nested children with their parent's shelf and exposes a reopened child
     [settled.id, 0],
   ]);
   expect(layout.settledShelfHeaderIndex).toBe(3);
+  const folded = buildThreadListV2Items({
+    threads: [grandchild, settled, child, root],
+    environmentId: null,
+    searchQuery: "",
+    now: NOW,
+    subtasksExpandedByKey: { [`${environmentId}:${root.id}`]: false },
+  });
+  expect(folded.items.map((item) => item.thread.id)).toEqual([root.id, settled.id]);
+  expect(folded.items[0]).toMatchObject({ subtaskCount: 1, subtasksExpanded: false });
+  expect(folded.settledShelfHeaderIndex).toBe(1);
+  const foldedList = buildThreadListV2ListItems({
+    items: folded.items,
+    pendingTasks: [],
+    settledCount: folded.settledCount,
+    settledShelfHeaderIndex: folded.settledShelfHeaderIndex,
+  });
+  expect(threadJumpTarget(foldedList, "thread.jump.2")?.id).toBe(settled.id);
+  const expandedList = buildThreadListV2ListItems({ items: layout.items, pendingTasks: [] });
+  expect(threadListV2ListItemsAreEqual(expandedList[0]!, foldedList[0]!)).toBe(false);
+  const nestedFolded = buildThreadListV2Items({
+    threads: [grandchild, settled, child, root],
+    environmentId: null,
+    searchQuery: "",
+    now: NOW,
+    subtasksExpandedByKey: { [`${environmentId}:${child.id}`]: false },
+  });
+  expect(nestedFolded.items.map((item) => item.thread.id)).toEqual([root.id, child.id, settled.id]);
   const collapsed = buildThreadListV2Items({
     threads: [{ ...root, settledOverride: "settled", settledAt: NOW }, child, grandchild],
     environmentId: null,

@@ -15,11 +15,13 @@ import {
   setProjectExpanded,
   setSidebarProjectScopeKey,
   setThreadChangedFilesExpanded,
+  setThreadSubtasksExpanded,
   type UiState,
 } from "./uiStateStore";
 
 function makeUiState(overrides: Partial<UiState> = {}): UiState {
   return {
+    threadSubtasksExpandedByKey: {},
     projectExpandedById: {},
     projectOrder: [],
     sidebarProjectScopeKey: null,
@@ -32,6 +34,25 @@ function makeUiState(overrides: Partial<UiState> = {}): UiState {
 }
 
 describe("uiStateStore pure functions", () => {
+  it("remembers each environment's collapsed subtask groups and can reveal an ancestor path", () => {
+    const collapsed = setThreadSubtasksExpanded(
+      makeUiState(),
+      ["local:parent", "local:child", "remote:parent"],
+      false,
+    );
+    expect(setThreadSubtasksExpanded(collapsed, "local:parent", false)).toBe(collapsed);
+    const expanded = setThreadSubtasksExpanded(collapsed, ["local:parent", "local:child"], true);
+    expect(expanded.threadSubtasksExpandedByKey).toEqual({ "remote:parent": false });
+    expect(
+      parsePersistedState({
+        threadSubtasksExpandedByKey: {
+          "local:parent": false,
+          "": false,
+          invalid: "no" as unknown as boolean,
+        },
+      }).threadSubtasksExpandedByKey,
+    ).toEqual({ "local:parent": false });
+  });
   it("stores server timestamps without moving visit state backwards", () => {
     const threadId = ThreadId.make("thread-1");
     const initialState = makeUiState();
@@ -193,6 +214,7 @@ describe("parsePersistedState", () => {
     });
 
     expect(parsed).toEqual({
+      threadSubtasksExpandedByKey: {},
       projectExpandedById: {
         logical: false,
       },
@@ -293,6 +315,7 @@ describe("uiStateStore persistence", () => {
 
   it("persists raw UI preferences including thread visit markers", () => {
     const state = makeUiState({
+      threadSubtasksExpandedByKey: { "environment:thread-1": false },
       projectExpandedById: {
         logical: false,
       },
@@ -315,6 +338,7 @@ describe("uiStateStore persistence", () => {
       localStorageStub.getItem(PERSISTED_STATE_KEY) ?? "{}",
     ) as PersistedUiState;
     expect(persisted).toEqual({
+      threadSubtasksExpandedByKey: { "environment:thread-1": false },
       projectExpandedById: {
         logical: false,
       },

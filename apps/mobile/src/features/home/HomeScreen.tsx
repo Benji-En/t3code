@@ -69,6 +69,7 @@ import {
   type ThreadListV2ListItem,
 } from "../threads/threadListV2";
 import { useThreadListV2ShelfPreferences } from "../threads/use-thread-list-v2-shelf-preferences";
+import { useThreadSubtaskPreferences } from "../threads/use-thread-subtask-preferences";
 import type { HomeListFilterMenuEnvironment } from "./home-list-filter-menu";
 import {
   buildHomeProjectScopes,
@@ -597,11 +598,17 @@ export function HomeScreen(props: HomeScreenProps) {
     nowMinute,
     snoozeWakeTick,
   ]);
+  const {
+    expandedByKey: subtasksExpandedByKey,
+    toggleSubtasks,
+    loaded: subtasksLoaded,
+  } = useThreadSubtaskPreferences(props.threads, selectedThreadKey);
   const threadListV2Layout = useMemo(() => {
     threadListInboxReturns.observe(workingShelfEnabled ? props.threads : null);
     // Settled threads are live shells; archived threads keep their original
     // "hidden from lists" meaning.
     return buildThreadListV2Items({
+      subtasksExpandedByKey,
       pendingOrder,
       threads: props.threads.filter((thread) => thread.archivedAt === null),
       environmentId: props.selectedEnvironmentId,
@@ -621,6 +628,7 @@ export function HomeScreen(props: HomeScreenProps) {
       selectedThreadKey,
     });
   }, [
+    subtasksExpandedByKey,
     workingShelfEnabled,
     workingShelfExpanded,
     pendingOrder,
@@ -778,6 +786,10 @@ export function HomeScreen(props: HomeScreenProps) {
           thread={thread}
           variant={item.item.variant}
           depth={item.item.depth}
+          subtaskCount={item.item.subtaskCount}
+          subtasksExpanded={item.item.subtasksExpanded}
+          onToggleSubtasks={toggleSubtasks}
+          subtasksDisabled={!subtasksLoaded}
           hasQueuedMessages={item.hasQueuedMessages}
           snoozed={item.item.snoozed}
           pinned={item.item.pinned}
@@ -878,6 +890,8 @@ export function HomeScreen(props: HomeScreenProps) {
       toggleSettledShelf,
       toggleSnoozedShelf,
       toggleWorkingShelf,
+      toggleSubtasks,
+      subtasksLoaded,
       v2ProjectTitleByProjectKey,
       props.searchQuery,
       workingShelfEnabled,
@@ -891,6 +905,7 @@ export function HomeScreen(props: HomeScreenProps) {
   // the same reason: the clock text is precomputed per item instead.
   const v2ExtraData = useMemo(
     () => ({
+      subtasksLoaded,
       projectByKey,
       projectTitleByProjectKey: v2ProjectTitleByProjectKey,
       listEnvironments,
@@ -902,6 +917,7 @@ export function HomeScreen(props: HomeScreenProps) {
       workingShelfEnabled,
     }),
     [
+      subtasksLoaded,
       projectByKey,
       props.searchQuery,
       selectedThreadKey,

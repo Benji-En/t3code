@@ -31,6 +31,7 @@ import { scopedProjectKey, scopedThreadKey } from "../../lib/scopedEntities";
 import { useProjects, useNavigationThreadShells } from "../../state/entities";
 import { useThreadSearch } from "../../state/queries";
 import { useThreadListV2ShelfPreferences } from "./use-thread-list-v2-shelf-preferences";
+import { useThreadSubtaskPreferences } from "./use-thread-subtask-preferences";
 import { usePendingThreadOrder } from "../../state/thread-order";
 import { threadListEnvironmentsAtom } from "../../state/server";
 import { usePendingNewTasks } from "../../state/use-pending-new-tasks";
@@ -367,9 +368,15 @@ function ThreadNavigationSidebarPane(
     nowMinute,
     snoozeWakeTick,
   ]);
+  const {
+    expandedByKey: subtasksExpandedByKey,
+    toggleSubtasks,
+    loaded: subtasksLoaded,
+  } = useThreadSubtaskPreferences(threads, props.selectedThreadKey);
   const threadListV2Layout = useMemo(() => {
     threadListInboxReturns.observe(workingShelfEnabled ? threads : null);
     return buildThreadListV2Items({
+      subtasksExpandedByKey,
       pendingOrder,
       threads: threads.filter((thread) => thread.archivedAt === null),
       environmentId: options.selectedEnvironmentId,
@@ -389,6 +396,7 @@ function ThreadNavigationSidebarPane(
       selectedThreadKey: props.selectedThreadKey ?? null,
     });
   }, [
+    subtasksExpandedByKey,
     workingShelfEnabled,
     workingShelfExpanded,
     pendingOrder,
@@ -603,6 +611,7 @@ function ThreadNavigationSidebarPane(
   // tick only re-renders rows whose displayed text actually moved.
   const listExtraData = useMemo(
     () => ({
+      subtasksLoaded,
       selectedThreadKey: props.selectedThreadKey ?? "",
       projectByKey,
       projectTitleByProjectKey,
@@ -613,6 +622,7 @@ function ThreadNavigationSidebarPane(
       workingShelfEnabled,
     }),
     [
+      subtasksLoaded,
       props.selectedThreadKey,
       projectByKey,
       projectTitleByProjectKey,
@@ -696,6 +706,10 @@ function ThreadNavigationSidebarPane(
               thread={thread}
               variant={item.item.variant}
               depth={item.item.depth}
+              subtaskCount={item.item.subtaskCount}
+              subtasksExpanded={item.item.subtasksExpanded}
+              onToggleSubtasks={toggleSubtasks}
+              subtasksDisabled={!subtasksLoaded}
               hasQueuedMessages={item.hasQueuedMessages}
               snoozed={item.item.snoozed}
               pinned={item.item.pinned}
@@ -834,6 +848,8 @@ function ThreadNavigationSidebarPane(
       toggleSettledShelf,
       toggleSnoozedShelf,
       toggleWorkingShelf,
+      toggleSubtasks,
+      subtasksLoaded,
       unpinThread,
       unsettleThread,
       unsnoozeThread,

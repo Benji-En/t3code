@@ -53,6 +53,7 @@ const isThreadListFilters = Schema.is(ThreadListFilters);
 const isPullRequestListPreferences = Schema.is(PullRequestListPreferences);
 
 export interface Preferences {
+  readonly threadSubtasksExpandedByKey?: Readonly<Record<string, boolean>>;
   readonly pullRequestHideTestFiles?: boolean;
   readonly pullRequestMergeMethod?: PullRequestMergeMethod;
   readonly liveActivitiesEnabled?: boolean;
@@ -136,6 +137,7 @@ export class MobilePreferencesStore extends Context.Service<
 
 function sanitizePreferences(parsed: Preferences): Preferences {
   const preferences: {
+    threadSubtasksExpandedByKey?: Readonly<Record<string, boolean>>;
     pullRequestHideTestFiles?: boolean;
     pullRequestMergeMethod?: PullRequestMergeMethod;
     liveActivitiesEnabled?: boolean;
@@ -164,6 +166,17 @@ function sanitizePreferences(parsed: Preferences): Preferences {
     threadListFilters?: ThreadListFilters;
     pullRequestListFilters?: PullRequestListPreferences;
   } = {};
+
+  if (
+    parsed.threadSubtasksExpandedByKey &&
+    typeof parsed.threadSubtasksExpandedByKey === "object"
+  ) {
+    preferences.threadSubtasksExpandedByKey = Object.fromEntries(
+      Object.entries(parsed.threadSubtasksExpandedByKey).filter(
+        ([key, value]) => key.length > 0 && typeof value === "boolean",
+      ),
+    );
+  }
 
   if (typeof parsed.pullRequestHideTestFiles === "boolean") {
     preferences.pullRequestHideTestFiles = parsed.pullRequestHideTestFiles;

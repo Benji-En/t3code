@@ -13,8 +13,11 @@ import { requestCustomSnooze } from "./CustomSnoozeDialog";
 import { useSupportsMultiplePullRequests } from "~/hooks/useSupportsMultiplePullRequests";
 import {
   buildThreadHierarchy,
+  buildThreadHierarchyTree,
   threadHierarchyOwnerKey,
 } from "@t3tools/client-runtime/state/threadHierarchy";
+import { SidebarThreadTree } from "./sidebar/SidebarThreadTree";
+import { useRevealThreadSubtasks } from "../hooks/useRevealThreadSubtasks";
 import { resolveThreadCurrentPullRequestLink } from "@t3tools/shared/threadPullRequests";
 import { useAtomValue } from "@effect/atom-react";
 import { replaceComposerContextReferences } from "@t3tools/shared/composerContextReferences";
@@ -1112,7 +1115,6 @@ const dropVerbBadge: Record<SidebarDropVerb, ReactNode> = {
 };
 
 const SidebarThreadRow = memo(function SidebarThreadRow(props: {
-  depth?: number;
   thread: SidebarThreadSummary;
   variant: "card" | "slim";
   // Settled rows un-settle, snoozed rows wake, and cards settle.
@@ -1804,7 +1806,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
       <li
         data-thread-item={threadKey}
         {...sortableRootProps}
-        style={{ ...sortableRootProps.style, marginLeft: Math.min(props.depth ?? 0, 6) * 14 }}
         {...(fileDropHandlers ?? {})}
         className={cn(
           // Matches the h-9 row so unrendered rows never shift the list when they paint.
@@ -1970,7 +1971,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
     <li
       data-thread-item={threadKey}
       {...sortableRootProps}
-      style={{ ...sortableRootProps.style, marginLeft: Math.min(props.depth ?? 0, 6) * 14 }}
       {...(fileDropHandlers ?? {})}
       className={cn(
         // Matches the h-[4.875rem] content box; the py-0.5 padding is added on top.
@@ -2431,6 +2431,8 @@ const SidebarSearchResultRow = memo(function SidebarSearchResultRow(props: {
 export default function Sidebar() {
   const projects = useProjects();
   const projectOrder = useUiStateStore((store) => store.projectOrder);
+  const subtasksExpandedByKey = useUiStateStore((store) => store.threadSubtasksExpandedByKey);
+  const setSubtasksExpanded = useUiStateStore((store) => store.setThreadSubtasksExpanded);
   const threads = useThreadShells();
   const router = useRouter();
   const { isMobile, setOpenMobile } = useSidebar();
@@ -3152,31 +3154,21 @@ export default function Sidebar() {
     ],
   );
   const hierarchyRows = useMemo(
-    () => buildThreadHierarchy(rootThreads, threads),
-    [rootThreads, threads],
+    () => buildThreadHierarchy(rootThreads, threads, subtasksExpandedByKey),
+    [rootThreads, threads, subtasksExpandedByKey],
   );
+  useRevealThreadSubtasks(threads, routeThreadKey);
   const orderedThreads = useMemo(() => hierarchyRows.map((row) => row.thread), [hierarchyRows]);
-  const hierarchyByKey = useMemo(
+  const hierarchyTreesByKey = useMemo(
     () =>
       new Map(
-        hierarchyRows.map((row) => [
-          scopedThreadKey(scopeThreadRef(row.thread.environmentId, row.thread.id)),
-          row,
+        buildThreadHierarchyTree(rootThreads, threads).map((node) => [
+          scopedThreadKey(scopeThreadRef(node.thread.environmentId, node.thread.id)),
+          node,
         ]),
       ),
-    [hierarchyRows],
+    [rootThreads, threads],
   );
-  const childrenByRootKey = useMemo(() => {
-    const children = new Map<string, typeof hierarchyRows>();
-    let rootKey: string | null = null;
-    for (const row of hierarchyRows) {
-      if (row.depth === 0) {
-        rootKey = scopedThreadKey(scopeThreadRef(row.thread.environmentId, row.thread.id));
-        children.set(rootKey, []);
-      } else if (rootKey !== null) children.get(rootKey)!.push(row);
-    }
-    return children;
-  }, [hierarchyRows]);
   const orderedThreadKeys = useMemo(
     () =>
       orderedThreads.map((thread) =>
@@ -5385,7 +5377,6 @@ export default function Sidebar() {
                             // sortable wrapper keeps its identity during a drag.
                             key={`${threadKey}:${rowVariant}`}
                             thread={thread}
-                            depth={hierarchyByKey.get(threadKey)?.depth ?? 0}
                             variant={rowVariant}
                             // Snoozed rows wake, settled rows un-settle, and cards settle.
                             variantAction={
@@ -5521,10 +5512,21 @@ export default function Sidebar() {
                       ];
                       for (const item of sidebarListItems) {
                         if (item.kind === "thread") {
-                          items.push(renderThreadRow(threadByKey.get(item.key)!, item.section));
-                          for (const row of childrenByRootKey.get(item.key) ?? []) {
-                            items.push(renderThreadRowInner(row.thread, item.section));
-                          }
+                          const node = hierarchyTreesByKey.get(item.key);
+                          if (node)
+                            items.push(
+                              <SidebarThreadTree
+                                key={item.key}
+                                nodes={[node]}
+                                expandedByKey={subtasksExpandedByKey}
+                                onExpandedChange={setSubtasksExpanded}
+                                renderThread={(thread, depth) =>
+                                  depth === 0
+                                    ? renderThreadRow(thread, item.section)
+                                    : renderThreadRowInner(thread, item.section)
+                                }
+                              />,
+                            );
                           continue;
                         }
                         switch (item.marker) {

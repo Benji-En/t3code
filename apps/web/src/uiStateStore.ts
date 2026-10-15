@@ -20,6 +20,7 @@ const LEGACY_PERSISTED_STATE_KEYS = [
 ] as const;
 
 export interface PersistedUiState {
+  threadSubtasksExpandedByKey?: Record<string, boolean>;
   projectExpandedById?: Record<string, boolean>;
   projectOrder?: string[];
   threadLastVisitedAtById?: Record<string, string>;
@@ -43,6 +44,7 @@ export interface UiProjectState {
 }
 
 export interface UiThreadState {
+  threadSubtasksExpandedByKey: Record<string, boolean>;
   threadLastVisitedAtById: Record<string, string>;
   threadChangedFilesExpandedById: Record<string, Record<string, boolean>>;
 }
@@ -59,6 +61,7 @@ export interface UiState
   extends UiProjectState, UiThreadState, UiEndpointState, UiPullRequestState {}
 
 const initialState: UiState = {
+  threadSubtasksExpandedByKey: {},
   projectExpandedById: {},
   projectOrder: [],
   sidebarProjectScopeKey: null,
@@ -148,6 +151,7 @@ export function parsePersistedState(parsed: PersistedUiState): UiState {
   return {
     projectExpandedById,
     projectOrder,
+    threadSubtasksExpandedByKey: sanitizeBooleanRecord(parsed.threadSubtasksExpandedByKey),
     threadLastVisitedAtById: sanitizeTimestampRecord(parsed.threadLastVisitedAtById),
     threadChangedFilesExpandedById:
       parsed.threadChangedFilesExpansionVersion === THREAD_CHANGED_FILES_EXPANSION_VERSION
@@ -224,6 +228,7 @@ export function persistState(state: UiState): void {
     window.localStorage.setItem(
       PERSISTED_STATE_KEY,
       JSON.stringify({
+        threadSubtasksExpandedByKey: state.threadSubtasksExpandedByKey,
         projectExpandedById,
         projectOrder: state.projectOrder,
         threadLastVisitedAtById: state.threadLastVisitedAtById,
@@ -246,6 +251,24 @@ export function persistState(state: UiState): void {
 }
 
 const debouncedPersistState = new Debouncer(persistState, { wait: 500 });
+
+export function setThreadSubtasksExpanded(
+  state: UiState,
+  threadKeys: string | readonly string[],
+  expanded: boolean,
+): UiState {
+  const keys = typeof threadKeys === "string" ? [threadKeys] : threadKeys;
+  const changed = keys.filter(
+    (key) => (state.threadSubtasksExpandedByKey[key] !== false) !== expanded,
+  );
+  if (changed.length === 0) return state;
+  const threadSubtasksExpandedByKey = { ...state.threadSubtasksExpandedByKey };
+  for (const key of changed) {
+    if (expanded) delete threadSubtasksExpandedByKey[key];
+    else threadSubtasksExpandedByKey[key] = false;
+  }
+  return { ...state, threadSubtasksExpandedByKey };
+}
 
 export function markThreadVisited(state: UiState, threadId: string, visitedAt: string): UiState {
   const visitedAtMs = Date.parse(visitedAt);
@@ -424,6 +447,7 @@ export function reorderProjects(
 }
 
 interface UiStateStore extends UiState {
+  setThreadSubtasksExpanded: (threadKeys: string | readonly string[], expanded: boolean) => void;
   markThreadVisited: (threadId: string, visitedAt: string) => void;
   markThreadUnread: (threadId: string, latestTurnCompletedAt: string | null | undefined) => void;
   setThreadChangedFilesExpanded: (threadId: string, turnId: string, expanded: boolean) => void;
@@ -440,6 +464,8 @@ interface UiStateStore extends UiState {
 
 export const useUiStateStore = create<UiStateStore>((set) => ({
   ...readPersistedState(),
+  setThreadSubtasksExpanded: (threadKeys, expanded) =>
+    set((state) => setThreadSubtasksExpanded(state, threadKeys, expanded)),
   markThreadVisited: (threadId, visitedAt) =>
     set((state) => markThreadVisited(state, threadId, visitedAt)),
   markThreadUnread: (threadId, latestTurnCompletedAt) =>

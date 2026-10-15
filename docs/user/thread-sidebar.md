@@ -221,7 +221,9 @@ retry and the normal snooze choices.
 On web and desktop, use **Agents** to follow work delegated to subagents.
 Stop on a thread also stops the subagents it delegated to.
 
-Subagent threads appear beneath their parent in the sidebar. Successful subtasks
+Subagent threads appear in a collapsible **Subtasks** group beneath their parent
+in the sidebar. Each device remembers which groups you collapse. Opening a subtask
+reveals its parent groups. Successful subtasks
 are automatically archived after their results have been consumed and no work
 remains queued or running. Their conversations remain available in the archive
 and in the parent's lineage. Reopening an archived subtask keeps it visible;

@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { useParams, useRouter } from "@tanstack/react-router";
-import { FileIcon, SquarePenIcon, XIcon } from "lucide-react";
+import { FileIcon, XIcon } from "lucide-react";
 import { replaceComposerContextReferences } from "@t3tools/shared/composerContextReferences";
 import {
   DraftId,
@@ -57,7 +57,6 @@ export function LegacySidebarDrafts() {
               )}
               onClick={() => void router.navigate({ to: "/draft/$draftId", params: { draftId } })}
             >
-              <SquarePenIcon className="size-3 shrink-0 text-warning-foreground" />
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sidebar-muted-foreground">
                   {project?.title ?? "New task"} · Draft
