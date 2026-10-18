@@ -71,7 +71,7 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import { threadRuntimeCanArchive } from "@t3tools/client-runtime/state/models";
-import { useNavigate, useParams, useRouter } from "@tanstack/react-router";
+import { useNavigate, useRouter } from "@tanstack/react-router";
 import {
   MAX_SIDEBAR_THREAD_PREVIEW_COUNT,
   MIN_SIDEBAR_THREAD_PREVIEW_COUNT,
@@ -131,13 +131,9 @@ import { useThreadActions } from "../hooks/useThreadActions";
 import { projectEnvironment } from "../state/projects";
 import { threadEnvironment, useEnvironmentThread } from "../state/threads";
 import { useEnvironment, useEnvironments, usePrimaryEnvironmentId } from "../state/environments";
-import {
-  buildThreadRouteParams,
-  resolveActiveThreadRouteRef,
-  resolveThreadRouteTarget,
-} from "../threadRoutes";
+import { buildThreadRouteParams, resolveActiveThreadRouteRef } from "../threadRoutes";
 import { stackedThreadToast, toastManager } from "./ui/toast";
-import { formatRelativeTimeLabel } from "../timestampFormat";
+import { RelativeTime } from "./RelativeTime";
 import { Kbd } from "./ui/kbd";
 import {
   getArm64IntelBuildWarningDescription,
@@ -225,6 +221,7 @@ import {
   type SidebarProjectGroupMember,
   type SidebarProjectSnapshot,
 } from "../sidebarProjectGrouping";
+import { useThreadRouteTarget } from "../hooks/useThreadRouteTarget";
 const SIDEBAR_SORT_LABELS: Record<SidebarProjectSortOrder, string> = {
   updated_at: "Last user message",
   created_at: "Created at",
@@ -289,13 +286,6 @@ function projectGroupingModeDescription(mode: SidebarProjectGroupingMode): strin
     case "separate":
       return "Every project path gets its own sidebar row.";
   }
-}
-
-// Every project row keys on this map, so it gets its own cache: inline, it
-// shared one with the modifier-key state and rebuilt on every key press.
-function useThreadJumpLabelMap(input: Parameters<typeof buildThreadJumpLabelMap>[0]) {
-  "use memo";
-  return buildThreadJumpLabelMap(input);
 }
 
 function buildThreadJumpLabelMap(input: {
@@ -377,13 +367,6 @@ function checkTaskPermission(environmentId: EnvironmentId): boolean {
   return false;
 }
 
-// The row's handlers key on this ref; built inline, the hooks after it kept the
-// compiler from caching it, so every render rebuilt all of them.
-function useScopedThreadRef(environmentId: EnvironmentId, threadId: ThreadId) {
-  "use memo";
-  return scopeThreadRef(environmentId, threadId);
-}
-
 const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowProps) {
   const {
     orderedProjectThreadKeys,
@@ -412,16 +395,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   } = props;
   const canOperateThread = useEnvironmentScope(thread.environmentId, AuthOrchestrationOperateScope);
   const canOperatePreview = useEnvironmentScope(thread.environmentId, AuthPreviewOperateScope);
-  const threadRef = useScopedThreadRef(thread.environmentId, thread.id);
-  const threadKey = scopedThreadKey(threadRef);
+  const threadKey = scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id));
   const [isFileDragOver, setIsFileDragOver] = useState(false);
-  const fileDropHandlers = makeWorkspaceFileDropHandlers({
-    setDragActive: setIsFileDragOver,
-    addFiles: (files) => {
-      onFileDropThreads(threadRef, files);
-    },
-    addFolders: () => {},
-  });
   useEffect(() => {
     if (!isFileDragOver) return;
     const clearFileDrag = () => setIsFileDragOver(false);
@@ -453,6 +428,23 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   const threadEnvironmentLabel = isRemoteThread
     ? (remoteEnvLabel ?? (isDesktopLocalThread ? "Local" : "Remote"))
     : null;
+  const isThreadRunning = !threadRuntimeCanArchive(thread.runtime);
+  const threadStatus = resolveThreadStatusPill({
+    thread: {
+      ...thread,
+      lastVisitedAt,
+    },
+  });
+  // Every hook runs above this line: the handlers below key on this ref, and the
+  // compiler can only cache it once no hook call follows its plain uses.
+  const threadRef = scopeThreadRef(thread.environmentId, thread.id);
+  const fileDropHandlers = makeWorkspaceFileDropHandlers({
+    setDragActive: setIsFileDragOver,
+    addFiles: (files) => {
+      onFileDropThreads(threadRef, files);
+    },
+    addFolders: () => {},
+  });
   const isHighlighted = isActive || isSelected;
   const handleOpenDiscoveredPort = (event: React.MouseEvent<HTMLButtonElement>) => {
     const port = discoveredPorts[0];
@@ -475,13 +467,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
       );
     })();
   };
-  const isThreadRunning = !threadRuntimeCanArchive(thread.runtime);
-  const threadStatus = resolveThreadStatusPill({
-    thread: {
-      ...thread,
-      lastVisitedAt,
-    },
-  });
   const isConfirmingArchive =
     canOperateThread && confirmingArchiveThreadKey === threadKey && !isThreadRunning;
   const threadMetaClassName = isConfirmingArchive
@@ -815,9 +800,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                       isHighlighted ? "text-foreground" : "text-secondary-label"
                     }`}
                   >
-                    {formatRelativeTimeLabel(
-                      thread.latestUserMessageAt ?? thread.updatedAt ?? thread.createdAt,
-                    )}
+                    <RelativeTime
+                      timestamp={thread.latestUserMessageAt ?? thread.updatedAt ?? thread.createdAt}
+                    />
                   </span>
                 )}
               </span>
@@ -1053,7 +1038,6 @@ function useProjectThreads(
   project: SidebarProjectSnapshot,
   subtasksExpandedByKey: Readonly<Record<string, boolean>>,
 ) {
-  "use memo";
   const threadSortOrder = useClientSettings<SidebarThreadSortOrder>(
     (settings) => settings.sidebarThreadSortOrder,
   );
@@ -1140,7 +1124,6 @@ function useProjectThreadPanel(input: {
   projectExpanded: boolean;
   isThreadListExpanded: boolean;
 }) {
-  "use memo";
   const {
     projectRoots,
     visibleProjectThreads,
@@ -2979,7 +2962,6 @@ function openAddProjectCommandPalette() {
 // LegacySidebar frozen and cached on their real inputs; inline, its later hook
 // calls made the compiler recompute them, and the props of every row with them.
 function useLegacySidebarProjects() {
-  "use memo";
   const projects = useProjects();
   const projectOrder = useUiStateStore((store) => store.projectOrder);
   const projectGroupingSettings = useClientSettings(selectProjectGroupingSettings);
@@ -3043,7 +3025,6 @@ function useSortedLegacySidebarProjects(input: {
   projectPhysicalKeyByScopedRef: ReadonlyMap<string, string>;
   sidebarProjectSortOrder: SidebarProjectSortOrder;
 }) {
-  "use memo";
   const {
     sidebarProjects,
     physicalToLogicalKey,
@@ -3093,7 +3074,6 @@ function useLegacySidebarThreads(input: {
   sidebarThreadPreviewCount: number;
   expandedThreadListsByProject: ReadonlySet<string>;
 }) {
-  "use memo";
   const {
     sortedProjects,
     physicalToLogicalKey,
@@ -3207,10 +3187,7 @@ export default function LegacySidebar() {
   const handleNewThread = useNewThreadHandler();
   const { archiveThread, deleteThread, markThreadUnread } = useThreadActions();
   const { isMobile, setOpenMobile } = useSidebar();
-  const routeTarget = useParams({
-    strict: false,
-    select: (params) => resolveThreadRouteTarget(params),
-  });
+  const routeTarget = useThreadRouteTarget();
   const routeDraftThread = useComposerDraftStore((store) =>
     routeTarget?.kind === "draft" ? store.getDraftSession(routeTarget.draftId) : null,
   );
@@ -3343,17 +3320,19 @@ export default function LegacySidebar() {
   };
 
   const isManualProjectSorting = sidebarProjectSortOrder === "manual";
-  const sidebarShortcutContext = {
-    terminalFocus: terminalFocused,
-    terminalOpen: routeTerminalOpen,
-    modelPickerOpen: isModelPickerOpen(),
-  };
-  const threadJumpLabelByKey = useThreadJumpLabelMap({
+  // Built before the modifier-dependent shortcut context so the compiler gives it
+  // its own cache; every project row keys on this map.
+  const threadJumpLabelByKey = buildThreadJumpLabelMap({
     keybindings,
     platform,
     terminalOpen: routeTerminalOpen,
     threadJumpCommandByKey,
   });
+  const sidebarShortcutContext = {
+    terminalFocus: terminalFocused,
+    terminalOpen: routeTerminalOpen,
+    modelPickerOpen: isModelPickerOpen(),
+  };
   const shouldShowThreadJumpHintsNow = shouldShowThreadJumpHintsForModifiers(
     shortcutModifiers,
     keybindings,

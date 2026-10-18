@@ -1,4 +1,3 @@
-import { useMemo } from "react";
 import { useParams, useRouter } from "@tanstack/react-router";
 import { FileIcon, XIcon } from "lucide-react";
 import { replaceComposerContextReferences } from "@t3tools/shared/composerContextReferences";
@@ -18,22 +17,16 @@ export function LegacySidebarDrafts() {
   const sessions = useComposerDraftStore((store) => store.draftThreadsByThreadKey);
   const composers = useComposerDraftStore((store) => store.draftsByThreadKey);
   const projects = useProjects();
-  const projectsByKey = useMemo(
-    () => new Map(projects.map((project) => [`${project.environmentId}:${project.id}`, project])),
-    [projects],
+  const projectsByKey = new Map(
+    projects.map((project) => [`${project.environmentId}:${project.id}`, project]),
   );
   const router = useRouter();
   const target = useParams({ strict: false, select: resolveThreadRouteTarget });
-  const rows = useMemo(
-    () =>
-      Object.entries(sessions)
-        .filter(
-          ([key, session]) =>
-            session.promotedTo == null && composerDraftHasUserContent(composers[key]),
-        )
-        .sort((left, right) => right[1].createdAt.localeCompare(left[1].createdAt)),
-    [sessions, composers],
-  );
+  const rows = Object.entries(sessions)
+    .filter(
+      ([key, session]) => session.promotedTo == null && composerDraftHasUserContent(composers[key]),
+    )
+    .sort((left, right) => right[1].createdAt.localeCompare(left[1].createdAt));
   if (rows.length === 0) return null;
   return (
     <div className="mx-1 mb-2 border-b border-sidebar-border pb-2" aria-label="Unsent drafts">
