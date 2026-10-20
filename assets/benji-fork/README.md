@@ -45,8 +45,9 @@ in `icon.png` and `icon.ico`; the Windows icon and in-app mark use the accepted
 larger presentation without changing their layout boxes.
 
 Closing the window retains the fork in the tray. Clicking its pin reopens the
-same window. Use **Quit T3 Code** in the tray, or the app's Quit command, to stop
-it completely. Cold launches still wait for the backend to become ready. A
+same window. On Windows, press **Alt** to reveal the app menu, then choose
+**File → Exit** to stop it completely. The tray also offers **Quit T3 Code**.
+Cold launches still wait for the backend to become ready. A
 private backend bytecode cache speeds subsequent launches and does not pass
 cache settings to provider processes. No startup entries or scheduled tasks are
 installed. Official automatic updates are disabled for this launcher.
