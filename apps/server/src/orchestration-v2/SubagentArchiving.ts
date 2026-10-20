@@ -2,7 +2,7 @@ import type {
   OrchestrationV2ThreadProjection,
   OrchestrationV2ThreadShell,
 } from "@t3tools/contracts";
-import { backgroundWorkHoldsCompletion } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
+import { backgroundWorkBlocksAutomaticSessionEnd } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
 import * as DateTime from "effect/DateTime";
 
 /** A successful result is disposable only once its owner has consumed it. */
@@ -27,7 +27,7 @@ export function canAutoArchiveSubagent(
     return false;
   if (child.pinnedAt != null || child.autoSettleDisabledAt != null) return false;
   if (child.activityRunStatus != null || child.pendingRuntimeRequest !== null) return false;
-  if (backgroundWorkHoldsCompletion(child.pendingBackgroundTasks ?? [])) return false;
+  if (backgroundWorkBlocksAutomaticSessionEnd(child.pendingBackgroundTasks ?? [])) return false;
   if (
     childWork?.runs.some((run) =>
       ["queued", "preparing", "starting", "running", "waiting"].includes(run.status),

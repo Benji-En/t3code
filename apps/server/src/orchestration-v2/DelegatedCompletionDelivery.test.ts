@@ -419,6 +419,13 @@ it.layer(layerTest)("delegated completion delivery repairs", (it) => {
           false,
         );
         assert.equal(
+          canAutoArchiveSubagent(
+            { ...ready, pendingBackgroundTasks: [{ taskId: "watch", kind: "command" }] },
+            consumed,
+          ),
+          false,
+        );
+        assert.equal(
           canAutoArchiveSubagent(ready, {
             ...consumed,
             subagents: [{ ...task, status: "failed" }],

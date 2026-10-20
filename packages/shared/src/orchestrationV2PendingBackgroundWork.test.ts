@@ -5,6 +5,7 @@ import {
   ProviderThreadId,
 } from "@t3tools/contracts";
 import {
+  backgroundWorkBlocksAutomaticSessionEnd,
   backgroundWorkHoldsCompletion,
   derivePendingBackgroundWork,
   turnItemUpdateCanEndBackgroundWork,
@@ -40,6 +41,16 @@ describe("backgroundWorkHoldsCompletion", () => {
     ["work the provider cannot name", true, [task("opaque", "background_task")]],
   ] as const)("with %s pending, holds completion: %s", (_case, holds, tasks) => {
     expect(backgroundWorkHoldsCompletion(tasks)).toBe(holds);
+  });
+});
+
+describe("backgroundWorkBlocksAutomaticSessionEnd", () => {
+  it.each([
+    ["nothing pending", false, []],
+    ["a background command", true, [{ taskId: "watch", kind: "command" }]],
+    ["a subagent", true, [{ taskId: "review", kind: "subagent" }]],
+  ] as const)("with %s pending, blocks: %s", (_case, blocks, tasks) => {
+    expect(backgroundWorkBlocksAutomaticSessionEnd(tasks)).toBe(blocks);
   });
 });
 

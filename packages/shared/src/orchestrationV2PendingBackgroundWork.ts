@@ -54,6 +54,16 @@ export function backgroundWorkHoldsCompletion(
   return tasks.some((task) => backgroundWorkKindHoldsCompletion(task.kind));
 }
 
+/**
+ * Automatic settling and archiving detach the thread's provider session, which ends every task
+ * its process runs, commands included, even though a command does not hold completion.
+ */
+export function backgroundWorkBlocksAutomaticSessionEnd(
+  tasks: ReadonlyArray<Pick<PendingBackgroundWorkTask, "kind">>,
+): boolean {
+  return tasks.length > 0;
+}
+
 function backgroundWorkKindHoldsCompletion(kind: PendingBackgroundWorkTask["kind"]): boolean {
   switch (kind) {
     case "command":
