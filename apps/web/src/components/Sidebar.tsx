@@ -463,10 +463,8 @@ function useSidebarThreads(input: {
   const { projectScopeKey, scopedProjectKeys, serverConfigs, optimisticDrop, routeThreadRef } =
     input;
   const threads = useThreadShells();
-  const routeRowThreadKey = threadHierarchyOwnerKey(
-    threads,
-    routeThreadRef === null ? null : scopedThreadKey(routeThreadRef),
-  );
+  const routeRowThreadKey = routeThreadRef === null ? null : scopedThreadKey(routeThreadRef);
+  const shelfRouteThreadKey = threadHierarchyOwnerKey(threads, routeRowThreadKey);
   const workingShelfEnabled = useClientSettings((s) => s.sidebarWorkingShelfEnabled);
   const nowMinute = useNowMinute();
   // Snooze wake times are second-precise, so classifying with the quantized
@@ -519,23 +517,23 @@ function useSidebarThreads(input: {
   const visibleSettledThreads = (() => {
     if (settledThreads.length <= settledVisibleCount) return settledThreads;
     const visible = settledThreads.slice(0, settledVisibleCount);
-    if (routeRowThreadKey !== null) {
+    if (shelfRouteThreadKey !== null) {
       const routeThread = settledThreads
         .slice(settledVisibleCount)
-        .find((thread) => threadShellKey(thread) === routeRowThreadKey);
+        .find((thread) => threadShellKey(thread) === shelfRouteThreadKey);
       if (routeThread !== undefined) visible.push(routeThread);
     }
     return visible;
   })();
   const renderedSettledThreads = settledShelfExpanded
     ? visibleSettledThreads
-    : routeThreadOnly(visibleSettledThreads, routeRowThreadKey);
+    : routeThreadOnly(visibleSettledThreads, shelfRouteThreadKey);
   const visibleSnoozedThreads = snoozedShelfExpanded
     ? snoozedThreads
-    : routeThreadOnly(snoozedThreads, routeRowThreadKey);
+    : routeThreadOnly(snoozedThreads, shelfRouteThreadKey);
   const visibleWorkingThreads = workingShelfExpanded
     ? workingThreads
-    : routeThreadOnly(workingThreads, routeRowThreadKey);
+    : routeThreadOnly(workingThreads, shelfRouteThreadKey);
   const rootThreads = [
     ...pinnedThreads,
     ...activeThreads,
