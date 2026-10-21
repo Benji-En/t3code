@@ -1,6 +1,5 @@
-import { act } from "react";
-import { createRoot } from "react-dom/client";
-import { afterEach, expect, it, vi } from "vite-plus/test";
+import { expect, it, vi } from "vite-plus/test";
+import { render } from "../../../test/render";
 import { EnvironmentId, ProjectId, ThreadId } from "@t3tools/contracts";
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import {
@@ -19,17 +18,20 @@ vi.mock("@tanstack/react-router", () => ({
 vi.mock("../../state/entities", () => ({ useProjects: () => [] }));
 vi.mock("../../lib/discardComposerDraft", () => ({ discardComposerDraft: vi.fn() }));
 
-afterEach(() => {
-  useComposerDraftStore.setState({
+function setup() {
+  const empty = {
     draftsByThreadKey: {},
     draftThreadsByThreadKey: {},
     logicalProjectDraftThreadKeyByLogicalProjectKey: {},
-  });
-  vi.unstubAllGlobals();
-});
+  };
+  route.params = {};
+  route.navigate.mockReset();
+  useComposerDraftStore.setState(empty);
+  return { [Symbol.dispose]: () => useComposerDraftStore.setState(empty) };
+}
 
 it("reopens an unsent draft with its prompt, image, and file after switching tasks", async () => {
-  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  using _state = setup();
   const environmentId = EnvironmentId.make("draft-env");
   const projectRef = scopeProjectRef(environmentId, ProjectId.make("draft-project"));
   const draftId = DraftId.make("saved-draft");
@@ -67,29 +69,20 @@ it("reopens an unsent draft with its prompt, image, and file after switching tas
   store.setProjectDraftThreadId(projectRef, DraftId.make("fresh-draft"), {
     threadId: ThreadId.make("fresh-task"),
   });
-  const container = document.createElement("div");
-  document.body.append(container);
-  const root = createRoot(container);
-  try {
-    await act(() => root.render(<LegacySidebarDrafts />));
-    const row = container.querySelector('[data-testid="sidebar-draft-row"]');
-    expect(row?.textContent).toContain("Keep this exact prompt");
-    expect(row?.textContent).toContain("2");
-    const button = row?.querySelector("button");
-    expect(button).not.toBeNull();
-    await act(() => button!.click());
-    expect(route.navigate).toHaveBeenCalledWith({ to: "/draft/$draftId", params: { draftId } });
-    route.params = { draftId };
-    await act(() => root.render(<LegacySidebarDrafts />));
-    const restored = store.getComposerDraft(draftId);
-    expect(restored).toBe(saved);
-    expect(restored?.images[0]?.file).toBe(image);
-    expect(restored?.files[0]?.file).toBe(file);
-    const persisted = partializeComposerDraftStoreState(useComposerDraftStore.getState());
-    expect(persisted.draftThreadsByThreadKey[draftId]?.threadId).toBe("unsent-task");
-    expect(persisted.draftsByThreadKey[draftId]?.files?.[0]?.attachmentId).toBe("uploaded-file");
-  } finally {
-    await act(() => root.unmount());
-    container.remove();
-  }
+  // Routing is mocked to inspect draft navigation without performing it.
+  await using screen = await render(<LegacySidebarDrafts />, { router: false });
+  const row = screen.getByTestId("sidebar-draft-row");
+  await expect.element(row).toHaveTextContent("Keep this exact prompt");
+  await expect.element(row).toHaveTextContent("2");
+  await row.getByRole("button").click();
+  expect(route.navigate).toHaveBeenCalledWith({ to: "/draft/$draftId", params: { draftId } });
+  route.params = { draftId };
+  await screen.rerender(<LegacySidebarDrafts />);
+  const restored = store.getComposerDraft(draftId);
+  expect(restored).toBe(saved);
+  expect(restored?.images[0]?.file).toBe(image);
+  expect(restored?.files[0]?.file).toBe(file);
+  const persisted = partializeComposerDraftStoreState(useComposerDraftStore.getState());
+  expect(persisted.draftThreadsByThreadKey[draftId]?.threadId).toBe("unsent-task");
+  expect(persisted.draftsByThreadKey[draftId]?.files?.[0]?.attachmentId).toBe("uploaded-file");
 });
