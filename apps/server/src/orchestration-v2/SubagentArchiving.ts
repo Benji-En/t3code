@@ -27,6 +27,7 @@ export function canAutoArchiveSubagent(
     return false;
   if (child.pinnedAt != null || child.autoSettleDisabledAt != null) return false;
   if (child.activityRunStatus != null || child.pendingRuntimeRequest !== null) return false;
+  if ((child.pendingGuestMessageCount ?? 0) > 0) return false;
   if (backgroundWorkBlocksAutomaticSessionEnd(child.pendingBackgroundTasks ?? [])) return false;
   if (
     childWork?.runs.some((run) =>
