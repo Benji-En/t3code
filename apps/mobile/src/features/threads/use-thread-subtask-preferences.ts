@@ -1,6 +1,6 @@
 import { useAtomSet, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useEffectEvent } from "react";
 import {
   threadHierarchyAncestorKeys,
   type HierarchyThread,
@@ -20,15 +20,8 @@ export function useThreadSubtaskPreferences(
   const expandedByKey = loaded
     ? (preferences.value.threadSubtasksExpandedByKey ?? EMPTY_EXPANSION)
     : EMPTY_EXPANSION;
-  const latestExpansion = useRef(expandedByKey);
-  useEffect(() => {
-    latestExpansion.current = expandedByKey;
-  }, [expandedByKey]);
-  const ancestorsJson = JSON.stringify(threadHierarchyAncestorKeys(threads, selectedKey));
-  useEffect(() => {
-    if (!loaded || selectedKey === null) return;
-    const ancestors = JSON.parse(ancestorsJson) as string[];
-    if (!ancestors.some((key) => latestExpansion.current[key] === false)) return;
+  const revealAncestors = useEffectEvent((ancestors: readonly string[]) => {
+    if (!ancestors.some((key) => expandedByKey[key] === false)) return;
     savePreferences({
       transform: (current) => {
         const next = { ...current.threadSubtasksExpandedByKey };
@@ -36,7 +29,13 @@ export function useThreadSubtaskPreferences(
         return { threadSubtasksExpandedByKey: next };
       },
     });
-  }, [ancestorsJson, selectedKey, loaded, savePreferences]);
+  });
+  const ancestorsJson = JSON.stringify(threadHierarchyAncestorKeys(threads, selectedKey));
+  // oxlint-disable-next-line t3code/react-effect-budget -- Navigation from either screen or history must open the selected task's persisted ancestor groups.
+  useEffect(() => {
+    if (!loaded || selectedKey === null) return;
+    revealAncestors(JSON.parse(ancestorsJson) as string[]);
+  }, [ancestorsJson, selectedKey, loaded]);
   const toggleSubtasks = useCallback(
     (key: string) => {
       if (!loaded) return;
