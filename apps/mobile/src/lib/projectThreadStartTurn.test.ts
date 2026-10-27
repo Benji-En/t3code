@@ -35,6 +35,7 @@ describe("project thread title", () => {
     const uploadedAttachments = [{ ...attachment, id: "prepared-attachment", sizeBytes: 3 }];
     const wire = serializeComposerMessageForServer(text, undefined, true);
     const spec = {
+      taskFolderId: "research",
       projectId: ProjectId.make("project"),
       projectCwd: "/workspace",
       threadId: "image-thread",
@@ -56,6 +57,7 @@ describe("project thread title", () => {
     const input = buildProjectThreadStartTurnInput(spec);
 
     expect(input.titleSeed).toBe(title);
+    expect(input.bootstrap.createThread.taskFolderId).toBe("research");
     expect(input.bootstrap.createThread.title).toBe(input.titleSeed);
     expect(input.message.attachments).toEqual(uploadedAttachments);
     expect(input.message.text).toBe(wire.text);

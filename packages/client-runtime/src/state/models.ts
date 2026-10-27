@@ -135,6 +135,7 @@ function threadRunStatusIsActive(status: ThreadRuntimeSummary["status"]): boolea
 }
 
 export interface EnvironmentThreadShell {
+  readonly taskFolderId?: string | null;
   readonly environmentId: EnvironmentId;
   readonly id: ThreadId;
   readonly projectId: ProjectId;
@@ -283,6 +284,7 @@ export function presentThreadShell(
     environmentId,
     id: thread.id,
     projectId: thread.projectId,
+    taskFolderId: thread.taskFolderId ?? null,
     title:
       thread.lineage.relationshipToParent === "subagent"
         ? formatSubagentDisplayTitle(thread.title)

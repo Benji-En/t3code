@@ -10,6 +10,58 @@ import {
 } from "./ProjectCommands.ts";
 import type { ProjectRow } from "./ProjectStore.ts";
 
+describe("project task folders", () => {
+  it("creates, renames and deletes folders without changing other project fields", () => {
+    const project = row();
+    for (const operation of [
+      { action: "create", id: "folder-a", name: " Research " },
+      { action: "create", id: "folder-b", name: "Build" },
+      { action: "rename", id: "folder-a", name: "Planning" },
+      { action: "delete", id: "folder-b" },
+    ] as const) {
+      const result = plan(
+        {
+          type: "project.meta.update",
+          commandId: CommandId.make(`folder:${operation.action}:${operation.id}`),
+          projectId,
+          taskFolderOperation: operation,
+        },
+        { project },
+      );
+      if (Result.isFailure(result) || result.success.type !== "project.meta-updated")
+        throw new Error("Expected a folder update");
+      Object.assign(project, { taskFolders: result.success.payload.taskFolders });
+    }
+    assert.deepStrictEqual(project.taskFolders, [{ id: "folder-a", name: "Planning" }]);
+    assert.equal(project.workspaceRoot, "/tmp/scripts");
+  });
+
+  it("rejects blank, duplicate, and unknown folder mutations", () => {
+    const project = row({ taskFolders: [{ id: "folder-a", name: "Research" }] });
+    for (const operation of [
+      { action: "create", id: "folder-b", name: " " },
+      { action: "create", id: "folder-b", name: "research" },
+      { action: "create", id: "folder-a", name: "Other" },
+      { action: "rename", id: "missing", name: "Other" },
+      { action: "delete", id: "missing" },
+    ] as const) {
+      assert.isTrue(
+        Result.isFailure(
+          plan(
+            {
+              type: "project.meta.update",
+              commandId: CommandId.make("invalid-folder"),
+              projectId,
+              taskFolderOperation: operation,
+            },
+            { project },
+          ),
+        ),
+      );
+    }
+  });
+});
+
 const now = DateTime.makeUnsafe("2026-01-01T00:00:00.000Z");
 const projectId = ProjectId.make("project-scripts");
 

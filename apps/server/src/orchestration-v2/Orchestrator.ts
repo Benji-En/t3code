@@ -2525,11 +2525,27 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
 
     const now = yield* DateTime.now;
     const emitEvent = emit(events, command);
+    const folderProject = command.taskFolderId
+      ? yield* projects.get(command.projectId).pipe(mapDispatchError(command))
+      : Option.none();
+    const taskFolderId =
+      Option.isSome(folderProject) &&
+      folderProject.value.taskFolders?.some((folder) => folder.id === command.taskFolderId)
+        ? command.taskFolderId
+        : null;
+    if (command.taskFolderId != null && taskFolderId === null) {
+      return yield* new OrchestratorDispatchError({
+        commandId: command.commandId,
+        commandType: command.type,
+        cause: "The task folder does not belong to this task's project.",
+      });
+    }
     const thread: OrchestrationV2AppThread = {
       createdBy: command.createdBy,
       creationSource: command.creationSource,
       id: command.threadId,
       projectId: command.projectId,
+      taskFolderId,
       title: command.title,
       providerInstanceId: command.modelSelection.instanceId,
       modelSelection: command.modelSelection,
@@ -2851,6 +2867,20 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         commandType: command.type,
         cause: `Thread ${command.threadId} is deleted.`,
       });
+    }
+    if (command.type === "thread.metadata.update" && command.taskFolderId != null) {
+      const project = yield* projects.get(thread.projectId).pipe(mapDispatchError(command));
+      if (
+        thread.lineage.relationshipToParent === "subagent" ||
+        Option.isNone(project) ||
+        !(project.value.taskFolders ?? []).some((folder) => folder.id === command.taskFolderId)
+      ) {
+        return yield* new OrchestratorDispatchError({
+          commandId: command.commandId,
+          commandType: command.type,
+          cause: "The task folder does not belong to this task's project.",
+        });
+      }
     }
     if (
       command.type === "thread.pull-request.watch" &&
@@ -3394,6 +3424,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           return {
             ...thread,
             ...(command.title === undefined ? {} : { title: command.title }),
+            ...(command.taskFolderId === undefined ? {} : { taskFolderId: command.taskFolderId }),
             ...(command.limitRecovery === undefined ? {} : { limitRecovery }),
             ...(command.limitRecovery !== undefined &&
             limitRecovery?.snooze === true &&

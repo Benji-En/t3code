@@ -82,6 +82,7 @@ const isPullRequestListPreferences = Schema.is(PullRequestListPreferences);
 
 export interface Preferences {
   readonly threadSubtasksExpandedByKey?: Readonly<Record<string, boolean>>;
+  readonly taskFoldersExpandedByKey?: Readonly<Record<string, boolean>>;
   readonly navigationTabOrder?: readonly string[];
   readonly hiddenNavigationTabs?: readonly string[];
   readonly pullRequestHideTestFiles?: boolean;
@@ -160,6 +161,7 @@ export class MobilePreferencesStore extends Context.Service<
 function sanitizePreferences(parsed: Preferences): Preferences {
   const preferences: {
     threadSubtasksExpandedByKey?: Readonly<Record<string, boolean>>;
+    taskFoldersExpandedByKey?: Readonly<Record<string, boolean>>;
     navigationTabOrder?: readonly string[];
     hiddenNavigationTabs?: readonly string[];
     pullRequestHideTestFiles?: boolean;
@@ -194,6 +196,12 @@ function sanitizePreferences(parsed: Preferences): Preferences {
     workspaceSelections?: WorkspaceSelections;
   } = {};
 
+  if (parsed.taskFoldersExpandedByKey && typeof parsed.taskFoldersExpandedByKey === "object")
+    preferences.taskFoldersExpandedByKey = Object.fromEntries(
+      Object.entries(parsed.taskFoldersExpandedByKey).filter(
+        ([key, value]) => key.length > 0 && typeof value === "boolean",
+      ),
+    );
   if (
     parsed.threadSubtasksExpandedByKey &&
     typeof parsed.threadSubtasksExpandedByKey === "object"

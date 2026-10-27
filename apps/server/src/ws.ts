@@ -2073,6 +2073,9 @@ export const layerWsRpc = (
               startup
                 .enqueueCommand(
                   ThreadMessageIntake.launchThread({
+                    ...(input.taskFolderId === undefined
+                      ? {}
+                      : { taskFolderId: input.taskFolderId }),
                     commandId: input.commandId,
                     ...(input.threadId === undefined ? {} : { threadId: input.threadId }),
                     ...(input.reuseExistingThread === undefined

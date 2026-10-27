@@ -1,3 +1,4 @@
+import { useTaskFolderActions } from "./task-folders";
 import * as Dialog from "../../components/ui/Dialog";
 import type { ThreadRowProviderInstance } from "./thread-provider-instance";
 import {
@@ -45,6 +46,10 @@ import { copyTextWithHaptic } from "../../lib/copyTextWithHaptic";
 import { useUniwindTheme } from "../../lib/useUniwindTheme";
 import { useEnvironmentScope } from "../../state/session";
 import type { PendingNewTask } from "../../state/use-pending-new-tasks";
+import {
+  updateComposerDraftSettings,
+  getComposerDraftSnapshot,
+} from "../../state/use-composer-drafts";
 import {
   pendingDraftBranchNeedsRefs,
   resolvePendingDraftBranch,
@@ -403,8 +408,20 @@ export const ThreadListV2PendingRow = memo(function ThreadListV2PendingRow(props
       })
     : pendingTask.branch;
 
+  const pendingFolderActions = useTaskFolderActions();
   const handleMenuAction = useCallback(
     ({ nativeEvent }: { readonly nativeEvent: { readonly event: string } }) => {
+      if (pendingTask.kind === "draft" && nativeEvent.event.startsWith("task-folder:")) {
+        const draft = getComposerDraftSnapshot(pendingTask.draftKey);
+        if (draft.project)
+          updateComposerDraftSettings(pendingTask.draftKey, {
+            project: {
+              ...draft.project,
+              taskFolderId: nativeEvent.event.slice("task-folder:".length) || null,
+            },
+          });
+        return;
+      }
       if (nativeEvent.event === "delete") onDeletePendingTask(pendingTask);
     },
     [onDeletePendingTask, pendingTask],
@@ -532,7 +549,14 @@ export const ThreadListV2PendingRow = memo(function ThreadListV2PendingRow(props
       >
         {() => (
           <Menu
-            actions={isDraft ? DRAFT_TASK_MENU_ACTIONS : PENDING_TASK_MENU_ACTIONS}
+            actions={
+              isDraft
+                ? [
+                    ...pendingFolderActions.moveMenu(props.project ?? null),
+                    ...DRAFT_TASK_MENU_ACTIONS,
+                  ]
+                : PENDING_TASK_MENU_ACTIONS
+            }
             onPressAction={handleMenuAction}
             shouldOpenOnLongPress
           >
@@ -908,8 +932,13 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     ],
     [arrangementMenuItems, titleMenuItems],
   );
+  const folderActions = useTaskFolderActions();
   const handleMenuAction = useCallback(
     ({ nativeEvent }: { readonly nativeEvent: { readonly event: string } }) => {
+      if (nativeEvent.event.startsWith("task-folder:")) {
+        void folderActions.move(thread, nativeEvent.event.slice("task-folder:".length) || null);
+        return;
+      }
       if (nativeEvent.event === "new-thread-on-branch") onNewThreadOnBranch(thread);
       if (nativeEvent.event === "settle") handleSettle();
       if (nativeEvent.event === "unsettle") handleUnsettle();
@@ -947,6 +976,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
       }
     },
     [
+      folderActions,
       onNewThreadOnBranch,
       thread,
       handleArchive,
@@ -1027,6 +1057,29 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
       ? `Opens the thread. Swipe left to ${primaryAction.label.toLowerCase()}.`
       : `Opens the thread. Swipe left for ${primaryAction.label.toLowerCase()} and snooze actions.`;
 
+  const subtaskGroupHeader =
+    props.subtaskCount && props.onToggleSubtasks ? (
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`${props.subtasksExpanded ? "Collapse" : "Expand"} subtasks`}
+        accessibilityState={{ expanded: props.subtasksExpanded, disabled: props.subtasksDisabled }}
+        disabled={props.subtasksDisabled}
+        onPress={(event) => {
+          event.stopPropagation();
+          props.onToggleSubtasks?.(`${thread.environmentId}:${thread.id}`);
+        }}
+        className="min-h-11 min-w-11 flex-row items-center justify-center gap-0.5"
+      >
+        <SymbolView
+          name={props.subtasksExpanded ? "chevron.down" : "chevron.right"}
+          size={10}
+          tintColorClassName="accent-muted-foreground"
+          className="opacity-60"
+        />
+        <Text className="text-[11px] text-muted-foreground/60">{props.subtaskCount}</Text>
+      </Pressable>
+    ) : null;
+
   const titleTextInset = props.project ? projectIconSize + 8 : 0;
   const cardContent = (
     <>
@@ -1045,7 +1098,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
         ) : null}
         <Text
           className={cn(
-            "flex-1 text-base",
+            "shrink text-base",
             !recede && "font-t3-medium",
             selected
               ? selectedThreadRowColors.foregroundClassName
@@ -1055,6 +1108,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
         >
           {thread.title}
         </Text>
+        {subtaskGroupHeader}
         <View className="flex-row items-center gap-1.5" style={{ minHeight: titleLineHeight }}>
           {props.hasQueuedMessages ? <QueuedMessageIcon selected={selected} /> : null}
           {pinnedRow ? (
@@ -1334,17 +1388,20 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
             </View>
           ) : null}
           <View className="min-w-0 flex-1">
-            <Text
-              className={cn(
-                "text-base",
-                selected
-                  ? selectedThreadRowColors.foregroundClassName
-                  : rowAppearance.mutedForegroundClassName,
-              )}
-              numberOfLines={1}
-            >
-              {thread.title}
-            </Text>
+            <View className="flex-row items-center">
+              <Text
+                className={cn(
+                  "shrink text-base",
+                  selected
+                    ? selectedThreadRowColors.foregroundClassName
+                    : rowAppearance.mutedForegroundClassName,
+                )}
+                numberOfLines={1}
+              >
+                {thread.title}
+              </Text>
+              {subtaskGroupHeader}
+            </View>
             {props.searchMatch ? (
               <ThreadSearchMatchExcerpt
                 sidebar={sidebarPane}
@@ -1374,34 +1431,8 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
       </RowPressable>
     );
 
-  const subtaskGroupHeader =
-    props.subtaskCount && props.onToggleSubtasks ? (
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={`${props.subtasksExpanded ? "Collapse" : "Expand"} subtasks`}
-        accessibilityState={{ expanded: props.subtasksExpanded, disabled: props.subtasksDisabled }}
-        disabled={props.subtasksDisabled}
-        onPress={() => props.onToggleSubtasks?.(`${thread.environmentId}:${thread.id}`)}
-        className="min-h-11 flex-row items-center gap-1.5 px-3"
-        style={{ marginLeft: Math.min((props.depth ?? 0) + 1, 5) * 28 }}
-      >
-        <SymbolView
-          name={props.subtasksExpanded ? "chevron.down" : "chevron.right"}
-          size={10}
-          tintColorClassName="accent-muted-foreground"
-          className="opacity-60"
-        />
-        <Text className="text-[11px] text-muted-foreground/60">Subtasks</Text>
-        <Text className="text-[11px] text-muted-foreground/60">({props.subtaskCount})</Text>
-      </Pressable>
-    ) : null;
   if (!canOperateThread)
-    return (
-      <View style={rowAppearance.swipeContainerStyle}>
-        {rowContent(() => {})}
-        {subtaskGroupHeader}
-      </View>
-    );
+    return <View style={rowAppearance.swipeContainerStyle}>{rowContent(() => {})}</View>;
 
   return (
     <View collapsable={false}>
@@ -1429,6 +1460,9 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
         {(close) => (
           <Menu
             actions={[
+              ...(thread.lineage.relationshipToParent === "subagent"
+                ? []
+                : folderActions.moveMenu(props.project ?? null)),
               ...(thread.branch
                 ? [
                     {
@@ -1456,7 +1490,6 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
           </Menu>
         )}
       </ThreadSwipeable>
-      {subtaskGroupHeader}
     </View>
   );
 });

@@ -31,9 +31,10 @@ function TaskList({ selected }: { selected: string | null }) {
           nodes={nodes}
           expandedByKey={expandedByKey}
           onExpandedChange={setExpanded}
-          renderThread={(thread) => (
+          renderThread={(thread, _depth, toggle) => (
             <li data-task={thread.id} data-testid={thread.id}>
               <button>{thread.id} Working</button>
+              {toggle}
             </li>
           )}
         />
@@ -55,13 +56,11 @@ function setup() {
 it("folds a subtree, remembers nested folds, and reveals a child opened through navigation", async () => {
   using _state = setup();
   await using screen = await render(<TaskList selected="local:grandchild" />);
-  const group = (key: string) =>
-    screen.container.querySelector(`[data-thread-subtask-group="local:${key}"]`)!;
   await expect.element(screen.getByTestId("grandchild")).toBeInTheDocument();
-  await act(() => (group("child").querySelector("button") as HTMLButtonElement).click());
+  await screen.getByTestId("child").getByRole("button", { name: "Collapse subtasks" }).click();
   await expect.element(screen.getByTestId("grandchild")).not.toBeInTheDocument();
   await expect.element(screen.getByTestId("visible-tasks")).toHaveTextContent("owner,child,other");
-  await act(() => (group("owner").querySelector("button") as HTMLButtonElement).click());
+  await screen.getByTestId("owner").getByRole("button", { name: "Collapse subtasks" }).click();
   await expect.element(screen.getByTestId("child")).not.toBeInTheDocument();
   await expect.element(screen.getByTestId("owner")).toHaveTextContent("Working");
   await expect.element(screen.getByTestId("other")).toBeInTheDocument();
@@ -72,7 +71,7 @@ it("folds a subtree, remembers nested folds, and reveals a child opened through 
   await act(() => useUiStateStore.setState(parsePersistedState(JSON.parse(persisted))));
   await screen.rerender(<TaskList selected="local:other" />);
   await expect.element(screen.getByTestId("child")).not.toBeInTheDocument();
-  await act(() => (group("owner").querySelector("button") as HTMLButtonElement).click());
+  await screen.getByTestId("owner").getByRole("button", { name: "Expand subtasks" }).click();
   await expect.element(screen.getByTestId("child")).toBeInTheDocument();
   await expect.element(screen.getByTestId("grandchild")).not.toBeInTheDocument();
   await screen.rerender(<TaskList selected="local:grandchild" />);

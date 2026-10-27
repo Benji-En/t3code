@@ -865,6 +865,40 @@ describe("composerDraftStore project draft thread mapping", () => {
     );
   });
 
+  it("keeps folder membership, text and files while moving or retrying a draft", () => {
+    const store = useComposerDraftStore.getState();
+    store.setLogicalProjectDraftThreadId("project:folder:a", projectRef, draftId, {
+      threadId,
+      taskFolderId: "a",
+    });
+    store.setPrompt(draftId, "Keep the unsent monitoring request");
+    store.addImage(
+      draftId,
+      makeImage({ id: "folder-attachment", previewUrl: "blob:folder-attachment" }),
+    );
+    store.setDraftThreadContext(draftId, { taskFolderId: "b" });
+    store.setLogicalProjectDraftThreadId("project:folder:b", projectRef, draftId, {
+      threadId: ThreadId.make("folder-retry"),
+    });
+    const current = useComposerDraftStore.getState();
+    expect(current.getDraftSession(draftId)?.taskFolderId).toBe("b");
+    expect(
+      partializeComposerDraftStoreState(current).draftThreadsByThreadKey[draftId]?.taskFolderId,
+    ).toBe("b");
+    expect(current.getComposerDraft(draftId)?.prompt).toBe("Keep the unsent monitoring request");
+    expect(current.getComposerDraft(draftId)?.images.map((image) => image.id)).toEqual([
+      "folder-attachment",
+    ]);
+    const hydrated = useComposerDraftStore.persist
+      .getOptions()
+      .merge?.(partializeComposerDraftStoreState(current), useComposerDraftStore.getInitialState());
+    expect(hydrated?.draftThreadsByThreadKey[draftId]?.taskFolderId).toBe("b");
+    expect(hydrated?.draftsByThreadKey[draftId]?.prompt).toBe("Keep the unsent monitoring request");
+    store.setDraftThreadContext(draftId, { taskFolderId: null });
+    expect(useComposerDraftStore.getState().getDraftSession(draftId)?.taskFolderId).toBeNull();
+    expect(useComposerDraftStore.getState().getComposerDraft(draftId)?.images).toHaveLength(1);
+  });
+
   it("clears only matching project draft mapping entries", () => {
     const store = useComposerDraftStore.getState();
     store.setProjectDraftThreadId(projectRef, draftId, { threadId });

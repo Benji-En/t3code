@@ -344,7 +344,16 @@ export interface ThreadListV2SettledShelfListItem {
   readonly disabled: boolean;
 }
 
+export type ThreadListV2FolderListItem = {
+  readonly type: "v2-folder";
+  readonly key: string;
+  readonly project: import("@t3tools/client-runtime/state/shell").EnvironmentProject;
+  readonly folder: import("@t3tools/contracts").ProjectTaskFolder | null;
+  readonly expanded: boolean;
+};
+
 export type ThreadListV2ListItem =
+  | ThreadListV2FolderListItem
   | ThreadListV2ThreadListItem
   | ThreadListV2PendingListItem
   | ThreadListV2WorkingShelfListItem
@@ -355,6 +364,7 @@ export function isThreadListV2ListItem(value: {
   readonly type: string;
 }): value is ThreadListV2ListItem {
   return (
+    value.type === "v2-folder" ||
     value.type === "v2-thread" ||
     value.type === "v2-pending" ||
     value.type === "v2-working-shelf" ||
@@ -369,6 +379,14 @@ export function threadListV2ListItemsAreEqual(
   item: ThreadListV2ListItem,
 ): boolean {
   switch (item.type) {
+    case "v2-folder":
+      return (
+        previous.type === "v2-folder" &&
+        previous.key === item.key &&
+        previous.project === item.project &&
+        previous.folder === item.folder &&
+        previous.expanded === item.expanded
+      );
     case "v2-thread":
       return (
         previous.type === "v2-thread" &&

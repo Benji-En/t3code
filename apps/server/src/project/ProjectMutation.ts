@@ -27,6 +27,9 @@ export const projectMutationOperation = Effect.fn("projectMutationOperation")(fu
 
     case "project.update":
       return yield* projects.update({
+        ...(mutation.taskFolderOperation === undefined
+          ? {}
+          : { taskFolderOperation: mutation.taskFolderOperation }),
         commandId: mutation.commandId,
         projectId: mutation.projectId,
         ...(mutation.title === undefined ? {} : { title: mutation.title }),

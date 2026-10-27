@@ -6,6 +6,18 @@ import { ThreadMetadataMcpUpdateInput } from "./threadMetadataMcp.ts";
 const decodeUpdate = Schema.decodeUnknownSync(ThreadMetadataMcpUpdateInput);
 
 describe("ThreadMetadataMcpUpdateInput", () => {
+  it("requires an explicit folder or root when moving and rejects folder fields on other actions", () => {
+    assert.equal(
+      decodeUpdate({ action: "set_folder", taskFolderId: "research" }).taskFolderId,
+      "research",
+    );
+    assert.isNull(decodeUpdate({ action: "set_folder", taskFolderId: null }).taskFolderId);
+    assert.throws(() => decodeUpdate({ action: "set_folder" }));
+    assert.throws(() => decodeUpdate({ action: "set_folder", taskFolderId: " " }));
+    assert.throws(() =>
+      decodeUpdate({ action: "rename", title: "Title", taskFolderId: "research" }),
+    );
+  });
   it("rejects malformed client request ids without normalizing valid keys", () => {
     const validKey = "metadata-\ud83d\ude80-1";
     assert.equal(

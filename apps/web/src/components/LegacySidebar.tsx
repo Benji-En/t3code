@@ -1,12 +1,11 @@
 import {
   buildThreadHierarchy,
-  buildThreadHierarchyTree,
   threadHierarchyRoots,
   threadHierarchyOwnerKey,
   threadHierarchyPreviewRoots,
 } from "@t3tools/client-runtime/state/threadHierarchy";
-import { LegacySidebarDrafts } from "./sidebar/LegacySidebarDrafts";
-import { SidebarThreadTree } from "./sidebar/SidebarThreadTree";
+import { SidebarTaskFolders } from "./sidebar/SidebarTaskFolders";
+import { useTaskFolderActions } from "./sidebar/TaskFolderControls";
 import { useRevealThreadSubtasks } from "../hooks/useRevealThreadSubtasks";
 import { Spinner } from "~/components/ui/spinner";
 import {
@@ -47,6 +46,7 @@ import {
   type DragStartEvent,
   closestCorners,
   pointerWithin,
+  useDraggable,
   useSensor,
   useSensors,
   type DragEndEvent,
@@ -335,6 +335,8 @@ function buildThreadJumpLabelMap(input: {
 }
 
 interface SidebarThreadRowProps {
+  subtaskToggle?: React.ReactNode;
+  folderDraggable?: boolean;
   thread: SidebarThreadSummary;
   orderedProjectThreadKeys: readonly string[];
   isActive: boolean;
@@ -417,6 +419,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   const canOperateThread = useEnvironmentScope(thread.environmentId, AuthOrchestrationOperateScope);
   const canOperatePreview = useEnvironmentScope(thread.environmentId, AuthPreviewOperateScope);
   const threadKey = scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id));
+  const { setNodeRef: setFolderDragNodeRef, listeners: folderDragListeners } = useDraggable({
+    id: threadKey,
+    disabled: !props.folderDraggable || !canOperateThread || renamingThreadKey === threadKey,
+  });
   const [isFileDragOver, setIsFileDragOver] = useState(false);
   const revealActiveRow = useContext(RevealActiveRowContext);
   const localLastVisitedAt = useUiStateStore((state) => state.threadLastVisitedAtById[threadKey]);
@@ -634,6 +640,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
 
   return (
     <SidebarMenuSubItem
+      ref={setFolderDragNodeRef}
+      {...folderDragListeners}
       className="w-full"
       data-thread-item
       {...fileDropHandlers}
@@ -681,7 +689,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
               <TooltipTrigger
                 render={
                   <span
-                    className="min-w-0 flex-1 truncate text-sm"
+                    className="min-w-0 truncate text-sm"
                     data-testid={`thread-title-${thread.id}`}
                   >
                     {thread.title}
@@ -691,6 +699,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
               <TooltipPopup side="top">{thread.title}</TooltipPopup>
             </Tooltip>
           )}
+          {props.subtaskToggle}
         </div>
         <div className="ml-auto flex shrink-0 items-center gap-1.5">
           {canOperatePreview && discoveredPorts.length > 0 && (
@@ -830,6 +839,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
 });
 
 interface SidebarProjectThreadListProps {
+  folderProjects: readonly SidebarProjectGroupMember[];
   allThreads: readonly SidebarThreadSummary[];
   projectKey: string;
   projectExpanded: boolean;
@@ -920,7 +930,6 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
   const showLessButtonRender = <button type="button" />;
   const expandedByKey = useUiStateStore((state) => state.threadSubtasksExpandedByKey);
   const setExpanded = useUiStateStore((state) => state.setThreadSubtasksExpanded);
-  const tree = buildThreadHierarchyTree(renderedThreads, allThreads);
 
   return (
     <SidebarMenuSub
@@ -938,15 +947,20 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
         </SidebarMenuSubItem>
       ) : null}
       {shouldShowThreadPanel && (
-        <SidebarThreadTree
-          nodes={tree}
-          expandedByKey={expandedByKey}
-          onExpandedChange={setExpanded}
-          renderThread={(thread) => {
+        <SidebarTaskFolders
+          roots={renderedThreads}
+          threads={allThreads}
+          projects={props.folderProjects}
+          selectedKey={activeRouteThreadKey}
+          expandedSubtasks={expandedByKey}
+          onSubtasksChange={setExpanded}
+          renderThread={(thread, depth, subtaskToggle) => {
             const threadKey = scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id));
             return (
               <SidebarThreadRow
                 key={threadKey}
+                subtaskToggle={subtaskToggle}
+                folderDraggable={depth === 0}
                 thread={thread}
                 orderedProjectThreadKeys={orderedProjectThreadKeys}
                 isActive={activeRouteThreadKey === threadKey}
@@ -1229,6 +1243,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
   const updateProject = useOrchestrationCommand(projectEnvironment.update, {
     reportFailure: false,
   });
+  const folderActions = useTaskFolderActions();
   const updateThreadMetadata = useOrchestrationCommand(threadEnvironment.updateMetadata, {
     reportFailure: false,
   });
@@ -1574,7 +1589,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
 
       const actionHandlers = new Map<string, () => Promise<void> | void>();
       const makeLeaf = (
-        action: "rename" | "grouping" | "copy-path" | "delete",
+        action: "rename" | "grouping" | "copy-path" | "delete" | "new-folder",
         member: SidebarProjectGroupMember,
         options?: {
           destructive?: boolean;
@@ -1584,6 +1599,8 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         const id = `${action}:${member.physicalProjectKey}`;
         actionHandlers.set(id, () => {
           switch (action) {
+            case "new-folder":
+              return folderActions.create(member);
             case "rename":
               openProjectRenameDialog(member);
               return;
@@ -1607,7 +1624,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       };
 
       const buildTargetedItem = (
-        action: "rename" | "grouping" | "copy-path" | "delete",
+        action: "rename" | "grouping" | "copy-path" | "delete" | "new-folder",
         label: string,
         options?: {
           destructive?: boolean;
@@ -1654,6 +1671,9 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
               !readEnvironmentScope(member.environmentId, AuthOrchestrationOperateScope),
           }),
           buildTargetedItem("grouping", "Group into..."),
+          buildTargetedItem("new-folder", "New task folder", {
+            isDisabled: (member) => !folderActions.canEdit(member),
+          }),
           buildTargetedItem("copy-path", "Copy Path"),
           { id: "project-settings", label: "Project settings", icon: "settings" },
           buildTargetedItem("delete", "Remove", {
@@ -2117,6 +2137,10 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
             ? [{ id: "new-thread-on-branch", label: `New thread on ${thread.branch}` }]
             : []),
           { id: "rename", label: "Rename thread", disabled: !canOperateThread },
+          ...folderActions.moveMenu(
+            threadProject ?? null,
+            thread.lineage.relationshipToParent === "subagent",
+          ),
           ...(appAtomRegistry.get(canShareWithGuestAtom(thread.environmentId))
             ? [{ id: "share-guest", label: "Share with guest" }]
             : []),
@@ -2135,6 +2159,10 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         position,
       );
 
+      if (clicked?.startsWith("task-folder:")) {
+        await folderActions.move(threadRef, clicked.slice("task-folder:".length) || null);
+        return;
+      }
       if (clicked === "project-settings") {
         if (isMobile) setOpenMobile(false);
         void router.navigate({
@@ -2329,6 +2357,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       </div>
 
       <SidebarProjectThreadList
+        folderProjects={project.memberProjects}
         allThreads={visibleProjectThreads}
         projectKey={project.projectKey}
         projectExpanded={projectExpanded}
@@ -2891,7 +2920,6 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
           </div>
         </div>
 
-        <LegacySidebarDrafts />
         {isManualProjectSorting ? (
           <DndContext
             sensors={projectDnDSensors}

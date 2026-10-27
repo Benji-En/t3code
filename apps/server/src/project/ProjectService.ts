@@ -168,6 +168,7 @@ export const make = Effect.gen(function* () {
     autoPull: row.autoPull,
     projectIcon: row.projectIcon,
     scripts: row.scripts,
+    taskFolders: row.taskFolders ?? [],
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     deletedAt: row.deletedAt,
@@ -361,6 +362,9 @@ export const make = Effect.gen(function* () {
             });
       yield* commit({
         type: "project.meta.update",
+        ...(input.taskFolderOperation === undefined
+          ? {}
+          : { taskFolderOperation: input.taskFolderOperation }),
         commandId: input.commandId,
         projectId: input.projectId,
         ...(input.title === undefined ? {} : { title: input.title }),
@@ -376,6 +380,62 @@ export const make = Effect.gen(function* () {
           : { defaultThreadEnvMode: input.defaultThreadEnvMode }),
         ...(input.scripts === undefined ? {} : { scripts: input.scripts }),
       });
+      if (input.taskFolderOperation?.action === "delete") {
+        const folderId = input.taskFolderOperation.id;
+        const clearFolder = Effect.fn("ProjectService.clearTaskFolder")(function* (
+          threadId: ThreadId,
+        ) {
+          const thread = yield* threadProjections.getThread(threadId);
+          if (thread.projectId !== input.projectId || thread.taskFolderId !== folderId) return;
+          const commandId = CommandId.make(`${input.commandId}:clear-folder:${threadId}`);
+          const now = yield* DateTime.now;
+          const id = yield* idAllocator.allocate.event({ threadId, commandId });
+          yield* eventSink.commitCommand({
+            commandId,
+            commandType: "thread.metadata.update",
+            threadId,
+            acceptedAt: now,
+            events: [
+              {
+                id,
+                type: "thread.metadata-updated",
+                threadId,
+                providerInstanceId: thread.providerInstanceId,
+                occurredAt: now,
+                payload: { ...thread, taskFolderId: null, updatedAt: now },
+              },
+            ],
+            effects: [],
+          });
+        });
+        const snapshot = yield* threadProjections.getShellSnapshot().pipe(
+          Effect.mapError(
+            (cause) =>
+              new ProjectOperationError({
+                operation: "list-threads",
+                projectId: input.projectId,
+                cause,
+              }),
+          ),
+        );
+        yield* Effect.forEach(
+          [...snapshot.threads, ...snapshot.archivedThreads].filter(
+            (thread) => thread.projectId === input.projectId && thread.taskFolderId === folderId,
+          ),
+          (thread) =>
+            threadCommands.withLock(thread.id, clearFolder(thread.id)).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new ProjectOperationError({
+                    operation: "dispatch-project-command",
+                    projectId: input.projectId,
+                    cause,
+                  }),
+              ),
+            ),
+          { discard: true },
+        );
+      }
       if (workspaceRoot !== previousRoot) {
         yield* projectEnrichment.invalidate([previousRoot, workspaceRoot]);
       }

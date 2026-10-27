@@ -47,6 +47,17 @@ in a new thread's model picker to add or remove them. A regular click returns to
 single model. Choose a base branch and send. Each selection starts a separate thread
 and worktree while you stay in the new thread composer. This requires a Git project.
 
+## Organize a project with task folders
+
+In a project view, choose **New folder** to create a logical group. Use a task's
+**Move to folder** menu, or drag it onto a folder on web and desktop. A parent
+task carries its subtasks with it. The folder menu can rename the folder, create
+a task inside it, or delete it. Deleting a folder returns its tasks to the project
+root. Unsent drafts retain their text and attachments when moved.
+
+Folders are shared with clients connected to the same environment. Their collapse
+choices stay on each device. The global task list keeps its usual layout.
+
 ## Pin and reorder threads
 
 Pin a thread from its menu to keep it above your active work.

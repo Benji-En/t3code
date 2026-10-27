@@ -183,6 +183,10 @@ export function useMultipleModelSend(input: MultipleModelSendInput) {
                   bootstrap: {
                     createThread: {
                       projectId: project.id,
+                      taskFolderId: draftId
+                        ? (useComposerDraftStore.getState().getDraftSession(draftId)
+                            ?.taskFolderId ?? null)
+                        : null,
                       title,
                       modelSelection: target.selection,
                       runtimeMode,

@@ -148,6 +148,19 @@ export const ReceivedProjectIcon = ForwardCompatibleUnion(projectIconMembers, "k
   ),
 );
 
+export const ProjectTaskFolder = Schema.Struct({
+  id: TrimmedNonEmptyString,
+  name: TrimmedNonEmptyString.check(Schema.isMaxLength(128)),
+});
+export type ProjectTaskFolder = typeof ProjectTaskFolder.Type;
+
+export const ProjectTaskFolderOperation = Schema.Union([
+  Schema.Struct({ action: Schema.Literal("create"), ...ProjectTaskFolder.fields }),
+  Schema.Struct({ action: Schema.Literal("rename"), ...ProjectTaskFolder.fields }),
+  Schema.Struct({ action: Schema.Literal("delete"), id: TrimmedNonEmptyString }),
+]);
+export type ProjectTaskFolderOperation = typeof ProjectTaskFolderOperation.Type;
+
 export const Project = Schema.Struct({
   id: ProjectId,
   title: TrimmedNonEmptyString,
@@ -160,6 +173,7 @@ export const Project = Schema.Struct({
   // Opt-in because background sync performs network I/O and may move the checkout.
   autoPull: Schema.optional(Schema.Boolean),
   scripts: Schema.Array(ProjectScript),
+  taskFolders: Schema.optional(Schema.Array(ProjectTaskFolder)),
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
   deletedAt: Schema.NullOr(IsoDateTime),
@@ -192,6 +206,7 @@ export const ProjectCreatePayload = Schema.Struct({
 export type ProjectCreatePayload = typeof ProjectCreatePayload.Type;
 
 export const ProjectUpdatePayload = Schema.Struct({
+  taskFolderOperation: Schema.optional(ProjectTaskFolderOperation),
   title: Schema.optional(TrimmedNonEmptyString),
   workspaceRoot: Schema.optional(TrimmedNonEmptyString),
   defaultModelSelection: Schema.optional(Schema.NullOr(ModelSelection)),

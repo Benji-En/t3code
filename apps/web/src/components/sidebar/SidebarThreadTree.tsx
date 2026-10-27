@@ -10,11 +10,11 @@ interface SidebarThreadTreeProps<T extends HierarchyThread> {
   readonly nodes: readonly ThreadHierarchyNode<T>[];
   readonly expandedByKey: Readonly<Record<string, boolean>>;
   readonly onExpandedChange: (threadKey: string, expanded: boolean) => void;
-  readonly renderThread: (thread: T, depth: number) => ReactNode;
+  readonly renderThread: (thread: T, depth: number, subtaskToggle: ReactNode) => ReactNode;
   readonly depth?: number;
 }
 
-/** Children occupy a distinct inset group; collapse controls are outside task rows. */
+/** Disclosure belongs to the parent row; only children consume indented list space. */
 export function SidebarThreadTree<T extends HierarchyThread>({
   nodes,
   expandedByKey,
@@ -29,28 +29,39 @@ export function SidebarThreadTree<T extends HierarchyThread>({
     const groupId = `${id}-${index}`;
     return (
       <Fragment key={key}>
-        {renderThread(thread, depth)}
-        {children.length > 0 && (
-          <li
-            className="my-0.5 min-w-0 list-none"
-            style={{ marginLeft: depth < 5 ? 28 : 0 }}
-            data-thread-subtask-group={key}
-          >
+        {renderThread(
+          thread,
+          depth,
+          children.length > 0 ? (
             <button
               type="button"
               aria-label={`${expanded ? "Collapse" : "Expand"} subtasks`}
+              aria-description={`${children.length} subtasks`}
               aria-expanded={expanded}
               aria-controls={expanded ? groupId : undefined}
-              className="flex h-5 w-full cursor-pointer items-center gap-1 rounded-sm px-2 text-left text-2xs text-sidebar-muted-foreground/60 hover:text-sidebar-muted-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring max-sm:h-8"
-              onClick={() => onExpandedChange(key, !expanded)}
+              className="inline-flex h-5 shrink-0 cursor-pointer items-center gap-0.5 rounded-sm px-0.5 text-2xs text-sidebar-muted-foreground/60 hover:text-sidebar-muted-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring max-sm:min-h-8 max-sm:min-w-8"
+              onPointerDown={(event) => event.stopPropagation()}
+              onDoubleClick={(event) => event.stopPropagation()}
+              onKeyDown={(event) => event.stopPropagation()}
+              onClick={(event) => {
+                event.stopPropagation();
+                onExpandedChange(key, !expanded);
+              }}
             >
               <ChevronRightIcon
                 aria-hidden
                 className={cn("size-2.5 shrink-0", expanded && "rotate-90")}
               />
-              <span>Subtasks</span>
-              <span className="tabular-nums">({children.length})</span>
+              <span className="tabular-nums">{children.length}</span>
             </button>
+          ) : null,
+        )}
+        {children.length > 0 && (
+          <li
+            className="min-w-0 list-none"
+            style={{ marginLeft: depth < 5 ? 28 : 0 }}
+            data-thread-subtask-group={key}
+          >
             {expanded && (
               <ul
                 id={groupId}

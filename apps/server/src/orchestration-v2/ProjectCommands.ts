@@ -6,6 +6,7 @@ import {
   type ProjectIconOverride,
   ProjectId,
   type ProjectScript,
+  type ProjectTaskFolderOperation,
   SCRIPT_RUN_COMMAND_PATTERN,
   type ThreadEnvMode,
 } from "@t3tools/contracts";
@@ -26,6 +27,7 @@ export interface ProjectCreateCommand {
 }
 
 export interface ProjectMetaUpdateCommand {
+  readonly taskFolderOperation?: ProjectTaskFolderOperation;
   readonly type: "project.meta.update";
   readonly commandId: CommandId;
   readonly projectId: ProjectId;
@@ -170,6 +172,35 @@ export function planProjectCommand(input: {
     case "project.meta.update": {
       const project = activeProject;
       if (project === undefined) return missingProject();
+      let taskFolders = project.taskFolders ?? [];
+      const operation = command.taskFolderOperation;
+      if (operation !== undefined) {
+        const existing = taskFolders.find((folder) => folder.id === operation.id);
+        if (operation.action !== "create" && existing === undefined)
+          return invariant("The task folder no longer exists.");
+        if (operation.action === "create" && existing !== undefined)
+          return invariant("The task folder already exists.");
+        if (operation.action === "delete") {
+          taskFolders = taskFolders.filter((folder) => folder.id !== operation.id);
+        } else {
+          const name = operation.name.trim();
+          if (name.length === 0 || name.length > 128)
+            return invariant("Folder names must contain 1 to 128 characters.");
+          if (
+            taskFolders.some(
+              (folder) =>
+                folder.id !== operation.id && folder.name.toLowerCase() === name.toLowerCase(),
+            )
+          )
+            return invariant("A task folder with this name already exists.");
+          taskFolders =
+            operation.action === "create"
+              ? [...taskFolders, { id: operation.id, name }]
+              : taskFolders.map((folder) =>
+                  folder.id === operation.id ? { ...folder, name } : folder,
+                );
+        }
+      }
       if (
         command.projectIcon?.kind === "monogram" &&
         Array.from(monogramSegmenter.segment(command.projectIcon.text)).length > 2
@@ -195,6 +226,7 @@ export function planProjectCommand(input: {
         ...base,
         type: "project.meta-updated",
         payload: {
+          ...(operation === undefined ? {} : { taskFolders }),
           projectId: command.projectId,
           ...(command.title === undefined ? {} : { title: command.title }),
           ...(command.workspaceRoot === undefined ? {} : { workspaceRoot: command.workspaceRoot }),

@@ -1872,6 +1872,7 @@ describe("mobile composer drafts", () => {
     const project = {
       environmentId: EnvironmentId.make("environment-1"),
       projectId: ProjectId.make("project-1"),
+      taskFolderId: "research",
     };
     const first = createNewTaskDraft(project);
     const second = createNewTaskDraft(project);
@@ -1888,6 +1889,7 @@ describe("mobile composer drafts", () => {
     clearComposerDraftContent(first, { clearModelSelection: true, clearWorkspaceSelection: true });
     expect(appAtomRegistry.get(composerDraftsAtom)[first]).toBeUndefined();
     expect(getComposerDraftSnapshot(second).text).toBe("second idea");
+    expect(getComposerDraftSnapshot(second).project?.taskFolderId).toBe("research");
   });
 
   it("retargets a new-task draft to another project without losing its text", () => {

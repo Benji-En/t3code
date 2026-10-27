@@ -741,6 +741,7 @@ export function NewTaskFlowProvider(
         ),
       }),
       creation: {
+        taskFolderId: draft.project?.taskFolderId ?? null,
         projectId: selectedProject.id,
         projectTitle: selectedProject.title,
         projectCwd: selectedProject.workspaceRoot,

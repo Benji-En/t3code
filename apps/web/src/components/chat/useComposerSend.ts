@@ -1236,6 +1236,11 @@ export function useComposerSend(input: ComposerSendInput) {
                 ? {
                     createThread: {
                       projectId: activeProject.id,
+                      taskFolderId:
+                        useComposerDraftStore
+                          .getState()
+                          .getDraftSessionByRef(scopeThreadRef(environmentId, threadIdForSend))
+                          ?.taskFolderId ?? null,
                       title,
                       modelSelection: threadCreateModelSelection,
                       runtimeMode,
@@ -1295,14 +1300,14 @@ export function useComposerSend(input: ComposerSendInput) {
       if (backgroundThreadRef) {
         try {
           backgroundDraftOpened = Boolean(
-            await handleNewThread(
-              scopeProjectRef(activeProject.environmentId, activeProject.id),
-              resolveBackgroundDraftWorkspaceOptions({
+            await handleNewThread(scopeProjectRef(activeProject.environmentId, activeProject.id), {
+              taskFolderId: draftThread?.taskFolderId ?? null,
+              ...resolveBackgroundDraftWorkspaceOptions({
                 envMode: sendEnvMode,
                 branch: activeThreadBranch,
                 startFromOrigin,
               }),
-            ),
+            }),
           );
         } catch (error) {
           clearBackgroundDraftSubmissionByRef(backgroundThreadRef);

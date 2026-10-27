@@ -13,6 +13,8 @@ import {
   buildThreadHierarchyTree,
   threadHierarchyOwnerKey,
 } from "@t3tools/client-runtime/state/threadHierarchy";
+import { SidebarTaskFolders } from "./sidebar/SidebarTaskFolders";
+import { useTaskFolderActions } from "./sidebar/TaskFolderControls";
 import { SidebarThreadTree } from "./sidebar/SidebarThreadTree";
 import { useRevealThreadSubtasks } from "../hooks/useRevealThreadSubtasks";
 import { useAtomValue } from "@effect/atom-react";
@@ -800,6 +802,7 @@ function readRouteThreadKey(router: AnyRouter): string | null {
 }
 
 export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReveal }) {
+  const folderActions = useTaskFolderActions();
   const subtasksExpandedByKey = useUiStateStore((store) => store.threadSubtasksExpandedByKey);
   const setSubtasksExpanded = useUiStateStore((store) => store.setThreadSubtasksExpanded);
   const {
@@ -2389,41 +2392,51 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
           ) ?? null;
         const clicked = await settlePromise(() =>
           api.contextMenu.show(
-            buildThreadActionMenuItems({
-              canOperate: readEnvironmentScope(
-                threadRef.environmentId,
-                AuthOrchestrationOperateScope,
+            [
+              ...folderActions.moveMenu(
+                projectByKey.get(`${thread.environmentId}:${thread.projectId}`) ?? null,
+                thread.lineage.relationshipToParent === "subagent",
               ),
-              branch: thread.branch ?? null,
-              projectFilter: threadProjectGroup
-                ? {
-                    label: threadProjectGroup.displayName,
-                    isActive: projectScopeKey === threadProjectGroup.projectKey,
-                  }
-                : null,
-              isPinned,
-              isSettled,
-              autoSettleEnabled: thread.autoSettleDisabledAt == null,
-              isSnoozed,
-              canSnoozeNow: canSnooze(thread, { now: new Date().toISOString() }),
-              isRegeneratingTitle,
-              isRunning: !threadRuntimeCanArchive(thread.runtime),
-              canShareWithGuest: appAtomRegistry.get(
-                canShareWithGuestAtom(threadRef.environmentId),
-              ),
-              supports: {
-                settlement: supportsSettlement,
-                autoSettleOptOut: supportsAutoSettleOptOut,
-                snooze: supportsSnooze,
-                pinning: supportsPinning,
-                titleRegeneration: supportsTitleRegeneration,
-              },
-              snoozePresets,
-            }),
+              ...buildThreadActionMenuItems({
+                canOperate: readEnvironmentScope(
+                  threadRef.environmentId,
+                  AuthOrchestrationOperateScope,
+                ),
+                branch: thread.branch ?? null,
+                projectFilter: threadProjectGroup
+                  ? {
+                      label: threadProjectGroup.displayName,
+                      isActive: projectScopeKey === threadProjectGroup.projectKey,
+                    }
+                  : null,
+                isPinned,
+                isSettled,
+                autoSettleEnabled: thread.autoSettleDisabledAt == null,
+                isSnoozed,
+                canSnoozeNow: canSnooze(thread, { now: new Date().toISOString() }),
+                isRegeneratingTitle,
+                isRunning: !threadRuntimeCanArchive(thread.runtime),
+                canShareWithGuest: appAtomRegistry.get(
+                  canShareWithGuestAtom(threadRef.environmentId),
+                ),
+                supports: {
+                  settlement: supportsSettlement,
+                  autoSettleOptOut: supportsAutoSettleOptOut,
+                  snooze: supportsSnooze,
+                  pinning: supportsPinning,
+                  titleRegeneration: supportsTitleRegeneration,
+                },
+                snoozePresets,
+              }),
+            ],
             position,
           ),
         );
         if (clicked._tag === "Failure" || clicked.value === null) return;
+        if (clicked.value.startsWith("task-folder:")) {
+          await folderActions.move(threadRef, clicked.value.slice("task-folder:".length) || null);
+          return;
+        }
         if (threadActionRequiresOperate(clicked.value) && !checkThreadOperations([thread])) return;
         if (clicked.value?.startsWith("snooze:")) {
           const preset =
@@ -2962,6 +2975,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                       const renderThreadRow = (
                         thread: EnvironmentThreadShell,
                         section: SidebarSection,
+                        subtaskToggle?: ReactNode,
                       ) => {
                         const threadKey = scopedThreadKey(
                           scopeThreadRef(thread.environmentId, thread.id),
@@ -2972,11 +2986,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                         return (
                           <SortableThreadRow
                             key={threadKey}
+                            subtaskToggle={subtaskToggle}
                             sortableId={threadKey}
                             contextDrag={isContextDrag}
                             sortableDisabled={
                               renamingThreadKey === threadKey ||
-                              !draggableThreadKeys.has(threadKey) ||
+                              (!scopedProjectGroup && !draggableThreadKeys.has(threadKey)) ||
                               optimisticDrop !== null
                             }
                             thread={thread}
@@ -3073,16 +3088,76 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                       };
                       const from = isContextDrag ? null : (dragState?.activeSection ?? null);
                       const items: ReactNode[] = [
-                        <SidebarDraftBlock
-                          key="draft-sessions"
-                          projectByKey={projectByKey}
-                          projectDisplayNameByKey={projectDisplayNameByKey}
-                          scopedProjectKeys={scopedProjectKeys}
-                          routeDraftId={routeDraftIdForRows}
-                          onNavigateToDraft={navigateToDraft}
-                          onDraftContextMenu={handleDraftContextMenu}
-                        />,
+                        scopedProjectGroup ? null : (
+                          <SidebarDraftBlock
+                            key="draft-sessions"
+                            projectByKey={projectByKey}
+                            projectDisplayNameByKey={projectDisplayNameByKey}
+                            scopedProjectKeys={scopedProjectKeys}
+                            routeDraftId={routeDraftIdForRows}
+                            onNavigateToDraft={navigateToDraft}
+                            onDraftContextMenu={handleDraftContextMenu}
+                          />
+                        ),
                       ];
+                      if (scopedProjectGroup) {
+                        const roots = [
+                          ...pinnedThreads,
+                          ...activeThreads,
+                          ...workingThreads,
+                          ...(snoozedShelfExpanded ? snoozedThreads : []),
+                          ...(settledShelfExpanded ? renderedSettledThreads : []),
+                        ];
+                        const sectionFor = (thread: EnvironmentThreadShell): SidebarSection =>
+                          thread.snoozedUntil != null
+                            ? "snoozed"
+                            : thread.settledAt != null
+                              ? "settled"
+                              : thread.pinnedAt != null
+                                ? "pinned"
+                                : "active";
+                        items.push(
+                          <SidebarTaskFolders
+                            key="project-folders"
+                            roots={roots}
+                            threads={threads}
+                            projects={scopedProjectGroup.memberProjects}
+                            selectedKey={routeThreadKey}
+                            expandedSubtasks={subtasksExpandedByKey}
+                            onSubtasksChange={setSubtasksExpanded}
+                            renderThread={(thread, _depth, toggle) =>
+                              renderThreadRow(thread, sectionFor(thread), toggle)
+                            }
+                          />,
+                        );
+                        if (snoozedThreads.length > 0)
+                          items.push(
+                            <SidebarSectionHeader
+                              key="snoozed-toggle"
+                              marker="snoozed-header"
+                              label="Snoozed"
+                              count={snoozedThreads.length}
+                              toggle={{
+                                expanded: snoozedShelfExpanded,
+                                onToggle: toggleSnoozedShelf,
+                              }}
+                            />,
+                          );
+                        if (settledCount > 0)
+                          items.push(
+                            <SidebarSectionHeader
+                              key="settled-toggle"
+                              marker="settled-header"
+                              label="Settled"
+                              count={settledCount}
+                              toggle={{
+                                expanded: settledShelfExpanded,
+                                onToggle: toggleSettledShelf,
+                              }}
+                            />,
+                          );
+                        return items;
+                      }
                       for (const item of sidebarListItems) {
                         if (item.kind === "thread") {
                           const node = hierarchyTreesByKey.get(item.key);
@@ -3093,7 +3168,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                                 nodes={[node]}
                                 expandedByKey={subtasksExpandedByKey}
                                 onExpandedChange={setSubtasksExpanded}
-                                renderThread={(thread) => renderThreadRow(thread, item.section)}
+                                renderThread={(thread, _depth, toggle) =>
+                                  renderThreadRow(thread, item.section, toggle)
+                                }
                               />,
                             );
                           continue;

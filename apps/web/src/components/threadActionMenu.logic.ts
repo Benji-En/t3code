@@ -2,6 +2,8 @@ import type { ContextMenuItem } from "@t3tools/contracts";
 import type { SnoozePreset } from "@t3tools/client-runtime/state/thread-settled";
 
 export type ThreadActionMenuId =
+  | "move-task-folder"
+  | `task-folder:${string}`
   | "new-thread-on-branch"
   | "filter-by-project"
   | "project-settings"

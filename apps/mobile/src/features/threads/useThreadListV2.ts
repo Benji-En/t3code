@@ -1,3 +1,4 @@
+import { useTaskFolderItems } from "./task-folders";
 import type { OlderSettledScope } from "@t3tools/client-runtime/state/threads";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { useMemo, useSyncExternalStore } from "react";
@@ -113,7 +114,7 @@ export function useThreadListV2(input: {
     settledLimit: input.settledLimit,
     now: input.now,
     workingShelfEnabled,
-    workingShelfExpanded: input.workingShelfExpanded,
+    workingShelfExpanded: input.projectRefs != null || input.workingShelfExpanded,
     inboxReturnAt: inbox.returnedAt,
     isWorking: inbox.isWorking,
     snoozedShelfExpanded: input.snoozedShelfExpanded,
@@ -152,7 +153,7 @@ export function useThreadListV2(input: {
     items: layout.items,
     pendingTasks,
     workingCount: layout.workingCount,
-    workingShelfExpanded: input.workingShelfExpanded,
+    workingShelfExpanded: input.projectRefs != null || input.workingShelfExpanded,
     workingShelfHeaderIndex: layout.workingShelfHeaderIndex,
     snoozedCount: layout.snoozedCount,
     snoozedShelfExpanded: input.snoozedShelfExpanded,
@@ -166,7 +167,13 @@ export function useThreadListV2(input: {
     moveAvailability,
     shelfPreferencesLoading: !input.shelfPreferencesLoaded,
   });
-  return { layout, items, contentOnlyThreadKeys, olderSettledShelf };
+  const folderItems = useTaskFolderItems({
+    items,
+    threads,
+    projectRefs: input.projectRefs,
+    selectedKey: input.selectedThreadKey,
+  });
+  return { layout, items: folderItems, contentOnlyThreadKeys, olderSettledShelf };
 }
 
 /** The list's scope per environment: its projects there, or every project. */

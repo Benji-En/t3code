@@ -124,6 +124,46 @@ function nativeThreadCreated(projectId: ProjectId, threadId: ThreadId) {
   };
 }
 
+it.effect("deleting a task folder returns its tasks to the project root and is retryable", () =>
+  Effect.gen(function* () {
+    const projectId = ProjectId.make("project:task-folders");
+    const otherId = ProjectId.make("project:other-folders");
+    yield* seedProject(projectId);
+    yield* seedProject(otherId);
+    yield* Effect.gen(function* () {
+      const service = yield* ProjectService.make;
+      const eventSink = yield* EventSink.EventSinkV2;
+      const projections = yield* ProjectionStore.ProjectionStoreV2;
+      yield* service.update({
+        commandId: CommandId.make("folder:create"),
+        projectId,
+        taskFolderOperation: { action: "create", id: "research", name: "Research" },
+      });
+      const task = nativeThreadCreated(projectId, ThreadId.make("task:folder"));
+      const other = nativeThreadCreated(otherId, ThreadId.make("task:other-folder"));
+      yield* eventSink.write({
+        events: [task, other].map((event) => ({
+          ...event,
+          payload: { ...event.payload, taskFolderId: "research" },
+        })),
+      });
+      assert.deepEqual(Option.getOrThrow(yield* service.getById(projectId)).taskFolders, [
+        { id: "research", name: "Research" },
+      ]);
+      const input = {
+        commandId: CommandId.make("folder:delete"),
+        projectId,
+        taskFolderOperation: { action: "delete", id: "research" } as const,
+      };
+      yield* service.update(input);
+      yield* service.update(input);
+      assert.deepEqual(Option.getOrThrow(yield* service.getById(projectId)).taskFolders, []);
+      assert.isNull((yield* projections.getThread(task.threadId)).taskFolderId);
+      assert.equal((yield* projections.getThread(other.threadId)).taskFolderId, "research");
+    }).pipe(Effect.provide(layerServices));
+  }).pipe(Effect.provide(layerDatabase)),
+);
+
 it.effect("retries a partial project deletion without repeating child events or cleanup", () =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;

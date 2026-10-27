@@ -50,10 +50,14 @@ interface NewThreadWorkspaceOptions {
   worktreePath?: string | null;
   envMode?: DraftThreadEnvMode;
   startFromOrigin?: boolean;
+  taskFolderId?: string | null;
 }
 
 function pickExplicitWorkspaceOptions(options: NewThreadWorkspaceOptions | undefined) {
   return {
+    ...(options?.taskFolderId !== undefined
+      ? { taskFolderId: options.taskFolderId, environmentSelection: "manual" as const }
+      : {}),
     ...(options?.branch !== undefined ? { branch: options.branch } : {}),
     ...(options?.worktreePath !== undefined ? { worktreePath: options.worktreePath } : {}),
     ...(options?.envMode !== undefined ? { envMode: options.envMode } : {}),
@@ -80,6 +84,7 @@ export function createNewThreadHandler(router: AnyRouter) {
       worktreePath?: string | null;
       envMode?: DraftThreadEnvMode;
       startFromOrigin?: boolean;
+      taskFolderId?: string | null;
       replace?: boolean;
     },
   ): Promise<{ draftId: DraftId; threadId: ThreadId } | null> => {
@@ -178,9 +183,12 @@ export function createNewThreadHandler(router: AnyRouter) {
           ) > 0,
       });
     };
-    const logicalProjectKey = project
+    const baseLogicalProjectKey = project
       ? deriveLogicalProjectKeyFromSettings(project, projectGroupingSettings)
       : scopedProjectKey(projectRef);
+    const logicalProjectKey = options?.taskFolderId
+      ? `${baseLogicalProjectKey}:folder:${scopedProjectKey(projectRef)}:${options.taskFolderId}`
+      : baseLogicalProjectKey;
     const hasBranchOption = options?.branch !== undefined;
     const hasWorktreePathOption = options?.worktreePath !== undefined;
     const hasEnvModeOption = options?.envMode !== undefined;
@@ -362,6 +370,8 @@ export function createNewThreadHandler(router: AnyRouter) {
       setLogicalProjectDraftThreadId(logicalProjectKey, projectRef, draftId, {
         threadId,
         createdAt,
+        taskFolderId: options?.taskFolderId ?? null,
+        ...(options?.taskFolderId ? { environmentSelection: "manual" as const } : {}),
         branch: options?.branch ?? null,
         worktreePath: options?.worktreePath ?? null,
         envMode: initialEnvMode,

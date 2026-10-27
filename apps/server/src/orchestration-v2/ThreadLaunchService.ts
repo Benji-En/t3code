@@ -75,6 +75,7 @@ export interface ThreadLaunchInitialMessage {
 }
 
 export interface ThreadLaunchInput {
+  readonly taskFolderId?: string | null;
   readonly commandId: CommandId;
   readonly threadId?: ThreadId;
   readonly reuseExistingThread?: boolean;
@@ -902,6 +903,11 @@ const make = Effect.gen(function* () {
                 commandId: input.commandId,
                 threadId: candidateThreadId,
                 projectId: input.projectId,
+                taskFolderId: project.taskFolders?.some(
+                  (folder) => folder.id === input.taskFolderId,
+                )
+                  ? (input.taskFolderId ?? null)
+                  : null,
                 title: input.title,
                 modelSelection: input.modelSelection,
                 runtimeMode: input.runtimeMode,

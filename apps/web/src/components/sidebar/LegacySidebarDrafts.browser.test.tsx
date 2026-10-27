@@ -17,6 +17,7 @@ vi.mock("@tanstack/react-router", () => ({
 }));
 vi.mock("../../state/entities", () => ({ useProjects: () => [] }));
 vi.mock("../../lib/discardComposerDraft", () => ({ discardComposerDraft: vi.fn() }));
+vi.mock("./TaskFolderControls", () => ({ useTaskFolderActions: () => ({ moveMenu: () => [] }) }));
 
 function setup() {
   const empty = {
@@ -34,6 +35,18 @@ it("reopens an unsent draft with its prompt, image, and file after switching tas
   using _state = setup();
   const environmentId = EnvironmentId.make("draft-env");
   const projectRef = scopeProjectRef(environmentId, ProjectId.make("draft-project"));
+  const projects = [
+    {
+      id: projectRef.projectId,
+      environmentId,
+      title: "Project",
+      workspaceRoot: "/project",
+      defaultModelSelection: null,
+      scripts: [],
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    },
+  ];
   const draftId = DraftId.make("saved-draft");
   const store = useComposerDraftStore.getState();
   store.setProjectDraftThreadId(projectRef, draftId, { threadId: ThreadId.make("unsent-task") });
@@ -70,14 +83,17 @@ it("reopens an unsent draft with its prompt, image, and file after switching tas
     threadId: ThreadId.make("fresh-task"),
   });
   // Routing is mocked to inspect draft navigation without performing it.
-  await using screen = await render(<LegacySidebarDrafts />, { router: false });
+  await using screen = await render(
+    <LegacySidebarDrafts projects={projects} taskFolderId={null} />,
+    { router: false },
+  );
   const row = screen.getByTestId("sidebar-draft-row");
   await expect.element(row).toHaveTextContent("Keep this exact prompt");
   await expect.element(row).toHaveTextContent("2");
   await row.getByRole("button").click();
   expect(route.navigate).toHaveBeenCalledWith({ to: "/draft/$draftId", params: { draftId } });
   route.params = { draftId };
-  await screen.rerender(<LegacySidebarDrafts />);
+  await screen.rerender(<LegacySidebarDrafts projects={projects} taskFolderId={null} />);
   const restored = store.getComposerDraft(draftId);
   expect(restored).toBe(saved);
   expect(restored?.images[0]?.file).toBe(image);

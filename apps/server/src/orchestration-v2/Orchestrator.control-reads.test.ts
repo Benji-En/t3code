@@ -62,6 +62,73 @@ const layerTest = Layer.mergeAll(
   ),
 );
 
+it.effect("persists folder membership and rejects another project's folder or a child move", () =>
+  Effect.gen(function* () {
+    const orchestrator = yield* Orchestrator.OrchestratorV2;
+    const projections = yield* ProjectionStore.ProjectionStoreV2;
+    const sql = yield* SqlClient.SqlClient;
+    const projectId = ProjectId.make("project:folder-ownership");
+    yield* sql`INSERT INTO projection_projects (project_id, title, workspace_root, scripts_json, task_folders_json, created_at, updated_at) VALUES (${projectId}, 'Folders', '/folders', '[]', '[{"id":"owned","name":"Owned"}]', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')`;
+    const threadId = ThreadId.make("thread:folder-ownership");
+    yield* orchestrator.dispatch({
+      type: "thread.create",
+      commandId: CommandId.make("folder:create-task"),
+      threadId,
+      projectId,
+      taskFolderId: "owned",
+      title: "Folder task",
+      modelSelection,
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      branch: null,
+      worktreePath: null,
+      createdBy: "user",
+      creationSource: "web",
+    });
+    assert.equal((yield* projections.getThread(threadId)).taskFolderId, "owned");
+    const rejected = yield* orchestrator
+      .dispatch({
+        type: "thread.metadata.update",
+        commandId: CommandId.make("folder:foreign"),
+        threadId,
+        taskFolderId: "foreign",
+      })
+      .pipe(Effect.result);
+    assert.isTrue(Result.isFailure(rejected));
+    yield* orchestrator.dispatch({
+      type: "thread.metadata.update",
+      commandId: CommandId.make("folder:root"),
+      threadId,
+      taskFolderId: null,
+    });
+    assert.isNull((yield* projections.getThread(threadId)).taskFolderId);
+    const thread = yield* projections.getThread(threadId);
+    yield* projections.apply({
+      id: EventId.make("folder:child"),
+      type: "thread.metadata-updated",
+      threadId,
+      occurredAt: yield* DateTime.now,
+      payload: {
+        ...thread,
+        lineage: {
+          ...thread.lineage,
+          parentThreadId: ThreadId.make("parent"),
+          relationshipToParent: "subagent",
+        },
+      },
+    });
+    const childMove = yield* orchestrator
+      .dispatch({
+        type: "thread.metadata.update",
+        commandId: CommandId.make("folder:child-move"),
+        threadId,
+        taskFolderId: "owned",
+      })
+      .pipe(Effect.result);
+    assert.isTrue(Result.isFailure(childMove));
+  }).pipe(Effect.provide(layerTest)),
+);
+
 it.effect(
   "records approval feedback and targets only its runtime request without dispatching a parent turn",
   () =>

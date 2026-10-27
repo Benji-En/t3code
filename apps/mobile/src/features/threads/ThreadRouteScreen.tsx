@@ -891,6 +891,7 @@ function ThreadRouteContent(
       input: buildProjectThreadStartTurnInput({
         ...metadata,
         projectId: selectedThread.projectId,
+        taskFolderId: selectedThread.taskFolderId ?? null,
         projectCwd: selectedThreadProject.workspaceRoot,
         text: setupMessage.text,
         titleText: selectedThread.title,
