@@ -4968,15 +4968,48 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             taskId,
           );
 
+        // An empty SDK roster can precede the notification and its model continuation.
+        const protectedBackgroundRoster = Effect.fnUntraced(function* (nativeThreadId: string) {
+          const roster = new Map(
+            rosterForNativeThread(
+              yield* Ref.get(pendingBackgroundTasksByNativeThread),
+              nativeThreadId,
+            ),
+          );
+          const known = yield* Ref.get(lastKnownOpaqueTasks);
+          if ((yield* Ref.get(activeTurn)) === null) {
+            for (const taskId of taskIdSetForNativeThread(
+              yield* Ref.get(wakeEligibleBackgroundTasksByNativeThread),
+              nativeThreadId,
+            )) {
+              if (!roster.has(taskId))
+                roster.set(taskId, {
+                  ...(known.get(taskId) ?? { taskId, kind: "background_task" as const }),
+                  awaited: true,
+                });
+            }
+          }
+          for (const message of (yield* Ref.get(wakeBuffers)).get(nativeThreadId)?.messages ?? []) {
+            if (message.type !== "system" || message.subtype !== "task_notification") continue;
+            if (!roster.has(message.task_id))
+              roster.set(message.task_id, {
+                ...(known.get(message.task_id) ?? {
+                  taskId: message.task_id,
+                  kind: "background_task" as const,
+                  description: message.summary,
+                }),
+                awaited: true,
+              });
+          }
+          return roster;
+        });
+
         const emitProviderThreadRoster = Effect.fnUntraced(function* (input: {
           readonly nativeThreadId: string;
           readonly providerThread: OrchestrationV2ProviderThread;
           readonly status?: OrchestrationV2ProviderThread["status"];
         }) {
-          const roster = rosterForNativeThread(
-            yield* Ref.get(pendingBackgroundTasksByNativeThread),
-            input.nativeThreadId,
-          );
+          const roster = yield* protectedBackgroundRoster(input.nativeThreadId);
           const awaitedTaskIds = taskIdSetForNativeThread(
             yield* Ref.get(awaitedBackgroundTasksByNativeThread),
             input.nativeThreadId,
@@ -10532,10 +10565,13 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           events: Stream.fromEffectRepeat(Queue.take(events)),
           backgroundTasksEndWithProcess: true,
           hasPendingBackgroundWork: Effect.gen(function* () {
-            for (const roster of (yield* Ref.get(pendingBackgroundTasksByNativeThread)).values()) {
-              if (roster.size > 0) {
-                return true;
-              }
+            const nativeThreadIds = new Set([
+              ...(yield* Ref.get(pendingBackgroundTasksByNativeThread)).keys(),
+              ...(yield* Ref.get(wakeEligibleBackgroundTasksByNativeThread)).keys(),
+              ...(yield* Ref.get(wakeBuffers)).keys(),
+            ]);
+            for (const nativeThreadId of nativeThreadIds) {
+              if ((yield* protectedBackgroundRoster(nativeThreadId)).size > 0) return true;
             }
             for (const subagent of (yield* Ref.get(sessionSubagentsByTaskId)).values()) {
               if (subagent.task.status === "running") {
@@ -10564,12 +10600,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             if (nativeThreadId === undefined || nativeThreadId === null) {
               return false;
             }
-            return (
-              rosterForNativeThread(
-                yield* Ref.get(pendingBackgroundTasksByNativeThread),
-                nativeThreadId,
-              ).size > 0
-            );
+            return (yield* protectedBackgroundRoster(nativeThreadId)).size > 0;
           }),
           ensureThread: Effect.fn("ClaudeAdapterV2.ensureThread")(
             function* (threadInput: ProviderAdapter.ProviderAdapterV2EnsureThreadInput) {
