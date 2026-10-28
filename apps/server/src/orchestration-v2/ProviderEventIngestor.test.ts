@@ -4,6 +4,7 @@ import {
   CheckpointId,
   CheckpointRef,
   CheckpointScopeId,
+  CommandId,
   MessageId,
   GitCommandError,
   type ModelSelection,
@@ -42,6 +43,7 @@ import * as ServerConfig from "../config.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as EventSink from "./EventSink.ts";
 import * as EventStore from "./EventStore.ts";
+import * as EffectOutbox from "./EffectOutbox.ts";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as ProjectionStore from "./ProjectionStore.ts";
 import * as ProviderEventIngestor from "./ProviderEventIngestor.ts";
@@ -73,6 +75,7 @@ const makeLayerTest = <E>(ingestorEventSink: Layer.Layer<EventSink.EventSinkV2, 
     layerTestDatabase,
     layerTestStores,
     layerTestEventSink,
+    EffectOutbox.layer.pipe(Layer.provide(layerTestDatabase)),
     IdAllocator.layer,
     ThreadCommandExecutor.layer,
     layerGit,
@@ -2174,6 +2177,360 @@ layer("ProviderEventIngestorV2", (it) => {
         ),
       ),
     ),
+  );
+  it.effect("honors Full Access for native file and command approvals across providers", () =>
+    Effect.gen(function* () {
+      const now = yield* DateTime.now;
+      const eventSink = yield* EventSink.EventSinkV2;
+      const projections = yield* ProjectionStore.ProjectionStoreV2;
+      const ingestor = yield* ProviderEventIngestor.ProviderEventIngestorV2;
+      const outbox = yield* EffectOutbox.EffectOutboxV2;
+      const idAllocator = yield* IdAllocator.IdAllocatorV2;
+      const threadEvent = yield* threadCreatedEvent(now);
+      yield* eventSink.write({ events: [threadEvent] });
+      const threadId = threadEvent.threadId;
+      const providerSessionId = yield* idAllocator.allocate.providerSession({
+        providerInstanceId: modelSelection.instanceId,
+        threadId,
+      });
+      for (const provider of [
+        "codex",
+        "claudeAgent",
+        "cursor",
+        "grok",
+        "opencode",
+        "antigravity",
+        "acpRegistry",
+        "muse",
+        "pi",
+      ]) {
+        const driver = ProviderDriverKind.make(provider);
+        for (const kind of ["command", "file-read", "file-change"] as const) {
+          const decision =
+            provider === "grok" && kind === "file-change" ? "acceptForSession" : "accept";
+          const request: OrchestrationV2RuntimeRequest = {
+            id: RuntimeRequestId.make(`${threadId}:${provider}:${kind}`),
+            nodeId: NodeId.make(`${threadId}:${provider}:${kind}`),
+            providerTurnId: null,
+            nativeRequestRef: null,
+            kind,
+            status: "pending",
+            responseCapability: { type: "live", providerSessionId },
+            createdAt: now,
+            resolvedAt: null,
+          };
+          const node: OrchestrationV2ExecutionNode = {
+            id: request.nodeId,
+            threadId,
+            runId: null,
+            parentNodeId: null,
+            rootNodeId: request.nodeId,
+            kind: "approval_request",
+            status: "waiting",
+            countsForRun: false,
+            providerThreadId: null,
+            providerTurnId: null,
+            nativeItemRef: null,
+            runtimeRequestId: request.id,
+            checkpointScopeId: null,
+            startedAt: now,
+            completedAt: null,
+          };
+          const item: OrchestrationV2TurnItem = {
+            id: TurnItemId.make(`${request.id}:item`),
+            threadId,
+            runId: null,
+            nodeId: node.id,
+            providerThreadId: null,
+            providerTurnId: null,
+            nativeItemRef: null,
+            parentItemId: null,
+            ordinal: yield* projections.getNextTurnItemOrdinal(threadId),
+            status: "waiting",
+            title: null,
+            startedAt: now,
+            completedAt: null,
+            updatedAt: now,
+            type: "approval_request",
+            requestId: request.id,
+            requestKind: kind,
+            ...(decision === "acceptForSession"
+              ? { options: [{ decision, label: "Allow edits this session" }] }
+              : {}),
+          };
+          for (const event of [
+            { type: "node.updated" as const, driver, node },
+            { type: "turn_item.updated" as const, driver, turnItem: item },
+          ]) {
+            yield* ingestor.ingestNormalized({
+              threadId,
+              providerSessionId,
+              providerInstanceId: modelSelection.instanceId,
+              event,
+            });
+          }
+          const input = {
+            threadId,
+            providerSessionId,
+            providerInstanceId: modelSelection.instanceId,
+            event: {
+              type: "runtime_request.updated" as const,
+              driver,
+              threadId,
+              runtimeRequest: request,
+            },
+          };
+          if (provider === "codex" && kind === "command") {
+            const runId = RunId.make("full-access-stale-run");
+            const activeAttemptId = RunAttemptId.make("full-access-stale-attempt");
+            for (const guard of [
+              { writeIfRunCurrent: { runId, activeAttemptId, expectedStatus: "running" as const } },
+              {
+                writeIfProviderThreadOwner: {
+                  runId,
+                  activeAttemptId,
+                  providerThreadId: ProviderThreadId.make("full-access-stale-thread"),
+                  expectedLastRunOrdinal: 1,
+                },
+              },
+            ]) {
+              assert.isEmpty(yield* ingestor.ingestNormalized({ ...input, ...guard }));
+              assert.isEmpty(
+                yield* outbox.listByCommandId(CommandId.make(`full-access:${request.id}`)),
+              );
+              assert.isUndefined(yield* projections.getRuntimeRequest(threadId, request.id));
+            }
+          }
+          const stored = yield* ingestor.ingestNormalized(input);
+          const resolved = yield* projections.getRuntimeResponseContext(threadId, request.id);
+          assert.equal(resolved.request?.status, "resolved", `${provider} ${kind}`);
+          assert.equal(resolved.request?.decision, decision);
+          assert.equal(resolved.node?.status, "completed");
+          assert.equal(resolved.item?.status, "completed");
+          assert.isFalse(
+            stored.some(
+              (stored) =>
+                stored.event.type === "runtime-request.updated" &&
+                stored.event.payload.status === "pending",
+            ),
+          );
+          const effects = yield* outbox.listByCommandId(
+            CommandId.make(`full-access:${request.id}`),
+          );
+          assert.lengthOf(effects, 1);
+          assert.deepEqual(effects[0]?.request, {
+            type: "runtime-request.respond",
+            providerSessionId,
+            requestId: request.id,
+            decision,
+          });
+          assert.isEmpty(yield* ingestor.ingestNormalized(input));
+          assert.lengthOf(
+            yield* outbox.listByCommandId(CommandId.make(`full-access:${request.id}`)),
+            1,
+          );
+          yield* ingestor.ingestNormalized({
+            ...input,
+            event: { type: "node.updated", driver, node },
+          });
+          yield* ingestor.ingestNormalized({
+            ...input,
+            event: { type: "turn_item.updated", driver, turnItem: item },
+          });
+          const afterLateArtifacts = yield* projections.getRuntimeResponseContext(
+            threadId,
+            request.id,
+          );
+          assert.equal(afterLateArtifacts.node?.status, "completed");
+          assert.equal(afterLateArtifacts.item?.status, "completed");
+        }
+      }
+    }),
+  );
+
+  it.effect(
+    "keeps supervised tasks, plan restrictions, questions and app access requests interactive",
+    () =>
+      Effect.gen(function* () {
+        const now = yield* DateTime.now;
+        const eventSink = yield* EventSink.EventSinkV2;
+        const projections = yield* ProjectionStore.ProjectionStoreV2;
+        const ingestor = yield* ProviderEventIngestor.ProviderEventIngestorV2;
+        const outbox = yield* EffectOutbox.EffectOutboxV2;
+        const idAllocator = yield* IdAllocator.IdAllocatorV2;
+        const threadEvent = yield* threadCreatedEvent(now);
+        if (threadEvent.type !== "thread.created") throw new Error("Expected a created thread");
+        const threadId = threadEvent.threadId;
+        yield* eventSink.write({ events: [threadEvent] });
+        const providerSessionId = yield* idAllocator.allocate.providerSession({
+          providerInstanceId: modelSelection.instanceId,
+          threadId,
+        });
+        const variants = [
+          { mode: "approval-required", kind: "command" },
+          { mode: "auto-accept-edits", kind: "command" },
+          { mode: "auto", kind: "file-change" },
+          { mode: "full-access", kind: "file-change", plan: true },
+          { mode: "full-access", kind: "user_input" },
+          { mode: "full-access", kind: "mcp-elicitation" },
+          { mode: "full-access", kind: "permission" },
+          { mode: "full-access", kind: "auth_refresh" },
+          { mode: "full-access", kind: "dynamic_tool_call" },
+          { mode: "full-access", kind: "file-change", notResumable: true },
+          { mode: "full-access", kind: "command", driver: "fx" },
+        ] as const;
+        for (const [index, variant] of variants.entries()) {
+          yield* eventSink.write({
+            events: [
+              {
+                ...threadEvent,
+                id: yield* idAllocator.allocate.event({ threadId }),
+                type: "thread.metadata-updated",
+                payload: {
+                  ...threadEvent.payload,
+                  runtimeMode: variant.mode,
+                  interactionMode: "plan" in variant ? "plan" : "default",
+                },
+              },
+            ],
+          });
+          const request: OrchestrationV2RuntimeRequest = {
+            id: RuntimeRequestId.make(`${threadId}:interactive:${index}`),
+            nodeId: NodeId.make(`${threadId}:interactive:${index}`),
+            providerTurnId: null,
+            nativeRequestRef: null,
+            kind: variant.kind,
+            status: "pending",
+            responseCapability:
+              "notResumable" in variant
+                ? { type: "not_resumable", reason: "Provider stopped" }
+                : { type: "live", providerSessionId },
+            createdAt: now,
+            resolvedAt: null,
+          };
+          yield* ingestor.ingestNormalized({
+            threadId,
+            providerSessionId,
+            providerInstanceId: modelSelection.instanceId,
+            event: {
+              type: "runtime_request.updated",
+              driver: ProviderDriverKind.make("driver" in variant ? variant.driver : "codex"),
+              runtimeRequest: request,
+            },
+          });
+          assert.equal(
+            (yield* projections.getRuntimeRequest(threadId, request.id))?.status,
+            "pending",
+          );
+          assert.isEmpty(
+            yield* outbox.listByCommandId(CommandId.make(`full-access:${request.id}`)),
+          );
+        }
+      }),
+  );
+
+  it.effect("uses the subtask's saved mode and stops granting requests after a downgrade", () =>
+    Effect.gen(function* () {
+      const now = yield* DateTime.now;
+      const eventSink = yield* EventSink.EventSinkV2;
+      const projections = yield* ProjectionStore.ProjectionStoreV2;
+      const ingestor = yield* ProviderEventIngestor.ProviderEventIngestorV2;
+      const outbox = yield* EffectOutbox.EffectOutboxV2;
+      const idAllocator = yield* IdAllocator.IdAllocatorV2;
+      const parent = yield* threadCreatedEvent(now);
+      if (parent.type !== "thread.created") throw new Error("Expected a created thread");
+      const childThreadId = yield* idAllocator.allocate.thread({
+        fixtureName: "approval-child",
+        projectId: parent.payload.projectId,
+      });
+      const child = {
+        ...parent.payload,
+        id: childThreadId,
+        runtimeMode: "approval-required" as const,
+        lineage: {
+          parentThreadId: parent.threadId,
+          rootThreadId: parent.threadId,
+          relationshipToParent: "subagent" as const,
+        },
+      };
+      yield* eventSink.write({
+        events: [
+          parent,
+          {
+            ...parent,
+            id: yield* idAllocator.allocate.event({ threadId: childThreadId }),
+            threadId: childThreadId,
+            payload: child,
+          },
+        ],
+      });
+      const providerSessionId = yield* idAllocator.allocate.providerSession({
+        providerInstanceId: modelSelection.instanceId,
+        threadId: parent.threadId,
+      });
+      for (const [index, mode] of (
+        ["approval-required", "full-access", "approval-required"] as const
+      ).entries()) {
+        yield* eventSink.write({
+          events: [
+            {
+              ...parent,
+              id: yield* idAllocator.allocate.event({ threadId: childThreadId }),
+              type: "thread.metadata-updated",
+              threadId: childThreadId,
+              payload: { ...child, runtimeMode: mode },
+            },
+          ],
+        });
+        const request: OrchestrationV2RuntimeRequest = {
+          id: RuntimeRequestId.make(`${childThreadId}:${index}`),
+          nodeId: NodeId.make(`${childThreadId}:${index}`),
+          providerTurnId: null,
+          nativeRequestRef: null,
+          kind: "file-change",
+          status: "pending",
+          responseCapability: { type: "live", providerSessionId },
+          createdAt: now,
+          resolvedAt: null,
+        };
+        const input = {
+          threadId: parent.threadId,
+          providerSessionId,
+          providerInstanceId: modelSelection.instanceId,
+          event: {
+            type: "runtime_request.updated" as const,
+            driver: CODEX_DRIVER,
+            threadId: childThreadId,
+            runtimeRequest: request,
+          },
+        };
+        yield* ingestor.ingestNormalized(input);
+        assert.equal(
+          (yield* projections.getRuntimeRequest(childThreadId, request.id))?.status,
+          mode === "full-access" ? "resolved" : "pending",
+        );
+        const effects = yield* outbox.listByCommandId(CommandId.make(`full-access:${request.id}`));
+        assert.lengthOf(effects, mode === "full-access" ? 1 : 0);
+        if (mode !== "full-access") {
+          yield* eventSink.write({
+            events: [
+              {
+                id: yield* idAllocator.allocate.event({ threadId: childThreadId }),
+                type: "runtime-request.updated",
+                threadId: childThreadId,
+                occurredAt: now,
+                payload: { ...request, status: "cancelled", resolvedAt: now },
+              },
+            ],
+          });
+          assert.isEmpty(yield* ingestor.ingestNormalized(input));
+          assert.equal(
+            (yield* projections.getRuntimeRequest(childThreadId, request.id))?.status,
+            "cancelled",
+          );
+        }
+      }
+    }),
   );
 });
 

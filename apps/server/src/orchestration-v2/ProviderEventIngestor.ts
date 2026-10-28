@@ -12,6 +12,7 @@ import {
   type OrchestrationV2Actor,
   type OrchestrationV2CreationSource,
   type RuntimeMode,
+  type RuntimeRequestId,
   type ProviderInteractionMode,
   ProviderInstanceId,
   ProviderSessionId,
@@ -35,6 +36,7 @@ import { getModelSelectionStringOptionValue, modelSelectionsEqual } from "@t3too
 import * as AnalyticsService from "../telemetry/AnalyticsService.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as EventSink from "./EventSink.ts";
+import type { PendingOrchestrationEffectV2 } from "./EffectOutbox.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
@@ -284,6 +286,7 @@ export interface ProviderEventIngestInput {
   readonly rawEventId?: RawEventId;
   readonly event: ProviderAdapter.ProviderAdapterV2Event;
   readonly analyticsContext?: ProviderTurnAnalyticsContext;
+  readonly runtimePolicy?: ProviderAdapter.ProviderAdapterV2RuntimePolicy;
 }
 
 export interface ProviderEventIngestorV2Shape {
@@ -536,6 +539,21 @@ export const layer: Layer.Layer<
       return events;
     });
 
+    const approvalResolution = Effect.fn("ProviderEventIngestor.approvalResolution")(function* (
+      threadId: ThreadId,
+      requestId: RuntimeRequestId,
+    ) {
+      const request = yield* projections.getRuntimeRequest(threadId, requestId);
+      if (request?.status !== "resolved" || request.resolvedAt === null) return undefined;
+      return {
+        status:
+          request.decision === "decline" || request.decision === "cancel"
+            ? ("cancelled" as const)
+            : ("completed" as const),
+        completedAt: request.resolvedAt,
+      };
+    });
+
     const normalize: ProviderEventIngestorV2Shape["normalize"] =
       /* This helper runs for individual orchestration events; the enclosing operation owns the span. */
       Effect.fnUntraced(
@@ -616,19 +634,26 @@ export const layer: Layer.Layer<
                   nodeId: input.event.providerTurn.nodeId,
                 }),
               ];
-            case "node.updated":
+            case "node.updated": {
+              const offered = input.event.node;
+              const resolution =
+                offered.kind === "approval_request" && offered.runtimeRequestId !== null
+                  ? yield* approvalResolution(offered.threadId, offered.runtimeRequestId)
+                  : undefined;
+              const node = resolution === undefined ? offered : { ...offered, ...resolution };
               // Adapters send an unchanged node again with each text delta. Compare with the
               // stored node, not the last one sent, because the server also writes nodes.
-              if (yield* projections.isNodeStored(input.event.node)) return [];
+              if (yield* projections.isNodeStored(node)) return [];
               return [
                 yield* makeDomainEvent(input, {
                   type: "node.updated",
                   threadId: input.event.node.threadId,
-                  payload: input.event.node,
+                  payload: node,
                   runId: input.event.node.runId,
                   nodeId: input.event.node.id,
                 }),
               ];
+            }
             case "subagent.updated":
               return [
                 yield* makeDomainEvent(input, {
@@ -649,18 +674,26 @@ export const layer: Layer.Layer<
                   nodeId: input.event.message.nodeId,
                 }),
               ];
-            case "turn_item.updated":
+            case "turn_item.updated": {
+              const offered = input.event.turnItem;
+              const resolution =
+                offered.type === "approval_request"
+                  ? yield* approvalResolution(offered.threadId, offered.requestId)
+                  : undefined;
+              const item =
+                resolution === undefined
+                  ? offered
+                  : { ...offered, ...resolution, updatedAt: resolution.completedAt };
               return [
                 yield* makeDomainEvent(input, {
                   type: "turn-item.updated",
                   threadId: input.event.turnItem.threadId,
-                  payload: boundFileChangeForStorage(
-                    stripUnservedToolOutputImageBytes(input.event.turnItem),
-                  ),
+                  payload: boundFileChangeForStorage(stripUnservedToolOutputImageBytes(item)),
                   runId: input.event.turnItem.runId,
                   nodeId: input.event.turnItem.nodeId,
                 }),
               ];
+            }
             case "runtime_request.updated":
               return [
                 yield* makeDomainEvent(input, {
@@ -745,13 +778,131 @@ export const layer: Layer.Layer<
           ),
       );
 
+    const applyFullAccess = Effect.fn("ProviderEventIngestor.applyFullAccess")(
+      function* (
+        input: ProviderEventIngestInput,
+        events: ReadonlyArray<OrchestrationV2DomainEvent>,
+      ) {
+        const effects: PendingOrchestrationEffectV2[] = [];
+        if (input.event.type !== "runtime_request.updated") return { events, effects };
+        const request = input.event.runtimeRequest;
+        if (
+          request.status !== "pending" ||
+          request.responseCapability.type !== "live" ||
+          (request.kind !== "command" &&
+            request.kind !== "file-read" &&
+            request.kind !== "file-change")
+        )
+          return { events, effects };
+        const threadId = input.event.threadId ?? input.threadId;
+        const context = yield* projections.getRuntimeResponseContext(
+          threadId,
+          request.id,
+          request.nodeId,
+        );
+        if (context.request !== undefined && context.request.status !== "pending") {
+          return { events: [], effects };
+        }
+        const thread = yield* projections.getThread(threadId);
+        if (
+          thread?.runtimeMode !== "full-access" ||
+          thread.interactionMode === "plan" ||
+          (input.runtimePolicy !== undefined &&
+            (input.runtimePolicy.runtimeMode !== "full-access" ||
+              (input.runtimePolicy.approvalPolicy !== undefined &&
+                input.runtimePolicy.approvalPolicy !== "never"))) ||
+          input.event.driver === "fx"
+        )
+          return { events, effects };
+        const options =
+          context.item?.type === "approval_request" ? context.item.options : undefined;
+        const decision =
+          options === undefined || options.some((option) => option.decision === "accept")
+            ? ("accept" as const)
+            : options.some((option) => option.decision === "acceptForSession")
+              ? ("acceptForSession" as const)
+              : undefined;
+        if (decision === undefined) return { events, effects };
+        const now = yield* DateTime.now;
+        const resolved: OrchestrationV2DomainEvent[] = events.map((event) =>
+          event.type === "runtime-request.updated"
+            ? {
+                ...event,
+                payload: {
+                  ...event.payload,
+                  status: "resolved" as const,
+                  decision,
+                  resolvedAt: now,
+                },
+              }
+            : event,
+        );
+        if (context.node !== undefined) {
+          resolved.push(
+            yield* makeDomainEvent(input, {
+              type: "node.updated",
+              threadId,
+              nodeId: context.node.id,
+              runId: context.node.runId,
+              occurredAt: now,
+              payload: { ...context.node, status: "completed", completedAt: now },
+            }),
+          );
+        }
+        if (context.item !== undefined) {
+          resolved.push(
+            yield* makeDomainEvent(input, {
+              type: "turn-item.updated",
+              threadId,
+              nodeId: request.nodeId,
+              runId: context.item.runId,
+              occurredAt: now,
+              payload: { ...context.item, status: "completed", completedAt: now, updatedAt: now },
+            }),
+          );
+        }
+        const commandId = CommandId.make(`full-access:${request.id}`);
+        effects.push({
+          id: `effect:${commandId}:runtime-request.respond`,
+          commandId,
+          threadId,
+          request: {
+            type: "runtime-request.respond",
+            providerSessionId: request.responseCapability.providerSessionId,
+            requestId: request.id,
+            decision,
+          },
+        });
+        return { events: resolved, effects };
+      },
+      (effect, input) =>
+        effect.pipe(
+          Effect.mapError(
+            (cause) =>
+              new ProviderEventNormalizeError({
+                providerSessionId: input.providerSessionId,
+                threadId:
+                  input.event.type === "runtime_request.updated"
+                    ? (input.event.threadId ?? input.threadId)
+                    : input.threadId,
+                providerEvent: input.event,
+                cause,
+              }),
+          ),
+        ),
+    );
+
     return ProviderEventIngestorV2.of({
       normalize,
       ingestNormalized:
         /* This helper runs for individual orchestration events; the enclosing operation owns the span. */
         Effect.fnUntraced(
           function* (input) {
-            const events = yield* normalize(input);
+            const normalized = yield* normalize(input);
+            const { events, effects } =
+              input.event.type === "runtime_request.updated"
+                ? yield* applyFullAccess(input, normalized)
+                : { events: normalized, effects: [] };
             if (events.length === 0) {
               return [];
             }
@@ -768,18 +919,19 @@ export const layer: Layer.Layer<
                   ...(input.commandId === undefined ? {} : { commandId: input.commandId }),
                   ...input.writeIfProviderThreadOwner,
                   events,
+                  effects,
                 })
                 .pipe(retryLockTimeout, Effect.mapError(mapWriteError));
               return ownerResult.storedEvents;
             }
             if (input.writeIfRunCurrent === undefined) {
-              return yield* eventSink
-                .write({
-                  guardPendingUserInputCancellations: true,
-                  ...(input.commandId === undefined ? {} : { commandId: input.commandId }),
-                  events,
-                })
-                .pipe(retryLockTimeout, Effect.mapError(mapWriteError));
+              const write = effects.length === 0 ? eventSink.write : eventSink.writeWithEffects;
+              return yield* write({
+                guardPendingUserInputCancellations: true,
+                ...(input.commandId === undefined ? {} : { commandId: input.commandId }),
+                events,
+                effects,
+              }).pipe(retryLockTimeout, Effect.mapError(mapWriteError));
             }
             const result = yield* eventSink
               .writeIfRunCurrent({
@@ -788,6 +940,7 @@ export const layer: Layer.Layer<
                 threadId: input.threadId,
                 ...input.writeIfRunCurrent,
                 events,
+                effects,
               })
               .pipe(retryLockTimeout, Effect.mapError(mapWriteError));
             return result.storedEvents;
@@ -882,7 +1035,9 @@ export const layer: Layer.Layer<
               (effect) =>
                 input.event.type === "app_thread.created"
                   ? threadCommands.withLock(input.event.appThread.id, effect)
-                  : effect,
+                  : input.event.type === "runtime_request.updated"
+                    ? threadCommands.withLock(input.event.threadId ?? input.threadId, effect)
+                    : effect,
             ),
         ),
     });

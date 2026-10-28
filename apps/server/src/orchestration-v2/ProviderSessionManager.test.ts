@@ -225,6 +225,7 @@ function makeThreadCreatedEvent(input: {
   readonly threadId: ThreadId;
   readonly now: DateTime.Utc;
   readonly projectId?: ProjectId;
+  readonly runtimeMode?: OrchestrationV2AppThread["runtimeMode"];
 }) {
   return Effect.gen(function* () {
     const projectId =
@@ -244,7 +245,7 @@ function makeThreadCreatedEvent(input: {
       title: "Provider session manager",
       providerInstanceId: modelSelection.instanceId,
       modelSelection,
-      runtimeMode: "full-access",
+      runtimeMode: input.runtimeMode ?? "full-access",
       interactionMode: "default",
       branch: null,
       worktreePath: null,
@@ -2860,9 +2861,21 @@ it.effect("ProviderSessionManagerV2 settles a request the event pump persists du
         threadId,
       });
       yield* eventSink.write({
-        events: [yield* makeThreadCreatedEvent({ idAllocator, threadId, now })],
+        events: [
+          yield* makeThreadCreatedEvent({
+            idAllocator,
+            threadId,
+            now,
+            runtimeMode: "approval-required",
+          }),
+        ],
       });
-      yield* manager.open({ threadId, providerSessionId, modelSelection, runtimePolicy });
+      yield* manager.open({
+        threadId,
+        providerSessionId,
+        modelSelection,
+        runtimePolicy: { ...runtimePolicy, runtimeMode: "approval-required" },
+      });
       const createdAt = DateTime.add(now, { seconds: 1 });
       const pendingRequest = yield* makePendingRuntimeRequestEvents({
         idAllocator,
@@ -2928,13 +2941,20 @@ it.effect("ProviderSessionManagerV2 persists session-scoped runtime requests wit
       });
 
       yield* eventSink.write({
-        events: [yield* makeThreadCreatedEvent({ idAllocator, threadId, now })],
+        events: [
+          yield* makeThreadCreatedEvent({
+            idAllocator,
+            threadId,
+            now,
+            runtimeMode: "approval-required",
+          }),
+        ],
       });
       yield* manager.open({
         threadId,
         providerSessionId,
         modelSelection,
-        runtimePolicy,
+        runtimePolicy: { ...runtimePolicy, runtimeMode: "approval-required" },
       });
       const pendingRequest = yield* makePendingRuntimeRequestEvents({
         idAllocator,

@@ -594,6 +594,8 @@ export interface ProjectionStoreV2Shape {
   readonly getRuntimeResponseContext: (
     threadId: ThreadId,
     requestId: RuntimeRequestId,
+    /** Incoming approvals can have node/item rows before their request row exists. */
+    pendingNodeId?: NodeId,
   ) => Effect.Effect<ProjectionRuntimeResponseContext, ProjectionStoreV2Error>;
   readonly getCheckpointContext: (
     threadId: ThreadId,
@@ -4996,24 +4998,26 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
     const getRuntimeResponseContext: ProjectionStoreV2Shape["getRuntimeResponseContext"] = (
       threadId,
       requestId,
+      pendingNodeId,
     ) =>
       sql
         .withTransaction(
           Effect.gen(function* () {
             yield* requireThread(threadId);
             const request = yield* getRuntimeRequest(threadId, requestId);
-            if (request === undefined)
+            if (request === undefined && pendingNodeId === undefined)
               return { request, node: undefined, item: undefined, session: undefined };
+            const nodeId = request?.nodeId ?? pendingNodeId;
             const nodeRows =
               yield* sql<PayloadRow>`SELECT payload_json FROM orchestration_v2_projection_nodes
-          WHERE thread_id = ${threadId} AND node_id = ${request.nodeId}`;
+          WHERE thread_id = ${threadId} AND node_id = ${nodeId}`;
             const itemRows =
               yield* sql<PayloadRow>`SELECT payload_json FROM orchestration_v2_projection_turn_items
-          WHERE thread_id = ${threadId} AND node_id = ${request.nodeId} AND type IN ('approval_request', 'user_input_request')
+          WHERE thread_id = ${threadId} AND node_id = ${nodeId} AND type IN ('approval_request', 'user_input_request')
             AND json_extract(payload_json, '$.requestId') = ${requestId}
           ORDER BY ordinal ASC LIMIT 1`;
             const sessionRows =
-              request.responseCapability.type !== "live"
+              request?.responseCapability.type !== "live"
                 ? []
                 : yield* sql<PayloadRow>`
           SELECT session.payload_json FROM orchestration_v2_projection_provider_sessions AS session
@@ -7400,17 +7404,18 @@ export const layerMemory: Layer.Layer<ProjectionStoreV2> = Layer.effect(
         },
       ),
       getRuntimeResponseContext: Effect.fn("ProjectionStore.getRuntimeResponseContext")(
-        function* (threadId, requestId) {
+        function* (threadId, requestId, pendingNodeId) {
           const projection = (yield* Ref.get(replayState)).projections.get(threadId);
           if (projection === undefined)
             return yield* new ProjectionStoreThreadNotFoundError({ threadId });
           const request = projection.runtimeRequests.find((request) => request.id === requestId);
+          const nodeId = request?.nodeId ?? pendingNodeId;
           return {
             request,
-            node: projection.nodes.find((node) => node.id === request?.nodeId),
+            node: projection.nodes.find((node) => node.id === nodeId),
             item: projection.turnItems.find(
               (item) =>
-                item.nodeId === request?.nodeId &&
+                item.nodeId === nodeId &&
                 (item.type === "approval_request" || item.type === "user_input_request") &&
                 item.requestId === requestId,
             ),
