@@ -18,6 +18,7 @@ export interface SidebarThreadHeaderProps {
   projectScope: ReactNode;
   onNewProject: () => void;
   onNewThread: (event: ReactMouseEvent) => void;
+  newFolderAction?: ReactNode;
   newThreadDisabled: boolean;
   newThreadShortcutLabel: string | null | undefined;
   newThreadInProjectShortcutLabel: string | null | undefined;
@@ -38,6 +39,7 @@ export function SidebarThreadHeader({
   projectScope,
   onNewProject,
   onNewThread,
+  newFolderAction,
   newThreadDisabled,
   newThreadShortcutLabel,
   newThreadInProjectShortcutLabel,
@@ -110,6 +112,7 @@ export function SidebarThreadHeader({
             </SidebarHeaderIconButton>
           </>
         ) : null}
+        {newFolderAction}
         <SidebarHeaderIconButton
           label="New thread"
           tooltip={

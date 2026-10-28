@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useEffectEvent, useId, useState, type ReactNode } from "react";
+import { useEffect, useEffectEvent, useId, useState, type ReactNode } from "react";
 import * as Schema from "effect/Schema";
 import { DndContext, PointerSensor, useDroppable, useSensor, useSensors } from "@dnd-kit/core";
 import { ChevronRightIcon } from "lucide-react";
@@ -200,23 +200,6 @@ export function SidebarTaskFolders<T extends FolderThread>(props: {
       <li className="list-none">
         <LegacySidebarDrafts projects={props.projects} taskFolderId={null} />
       </li>
-      {props.projects.map((project) =>
-        actions.canEdit(project) ? (
-          <Fragment key={`${project.environmentId}:${project.id}`}>
-            <li className="list-none">
-              <button
-                type="button"
-                className="px-2 py-1 text-2xs text-sidebar-muted-foreground/60 hover:text-sidebar-foreground"
-                onClick={() => {
-                  void actions.create(project);
-                }}
-              >
-                New folder{props.projects.length > 1 ? ` · ${project.title}` : ""}
-              </button>
-            </li>
-          </Fragment>
-        ) : null,
-      )}
     </DndContext>
   );
 }

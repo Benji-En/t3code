@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { create } from "zustand";
+import { FolderPlusIcon } from "lucide-react";
 import { randomUUID } from "../../lib/utils";
 import type { ThreadActionMenuId } from "../threadActionMenu.logic";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/models";
@@ -17,6 +18,8 @@ import { readEnvironmentScope } from "../../state/session";
 import { useServerConfigs, readProject } from "../../state/entities";
 import { useNewThreadHandler } from "../../hooks/useHandleNewThread";
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
+import { readLocalApi } from "../../localApi";
+import { SidebarHeaderIconButton } from "./SidebarThreadHeader";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import {
@@ -168,4 +171,51 @@ export function useTaskFolderActions() {
     newTask: (project: EnvironmentProject, taskFolderId: string) =>
       newThread(scopeProjectRef(project.environmentId, project.id), { taskFolderId }),
   };
+}
+
+export function NewTaskFolderButton(props: {
+  projects: readonly (EnvironmentProject & { environmentLabel?: string | null })[];
+  className?: string;
+  onCreate?: () => void;
+}) {
+  const actions = useTaskFolderActions();
+  const projects = props.projects.filter(actions.canEdit);
+  if (projects.length === 0) return null;
+  const createFolder = (project: EnvironmentProject) => {
+    props.onCreate?.();
+    void actions.create(project);
+  };
+  return (
+    <SidebarHeaderIconButton
+      label="New folder"
+      data-testid="new-folder-button"
+      className={props.className}
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (projects.length === 1) {
+          createFolder(projects[0]!);
+          return;
+        }
+        const api = readLocalApi();
+        if (!api) return;
+        void api.contextMenu
+          .show(
+            projects.map((project) => ({
+              id: `${project.environmentId}:${project.id}`,
+              label: `${project.title} · ${project.environmentLabel ?? project.workspaceRoot}`,
+            })),
+            { x: event.clientX, y: event.clientY },
+          )
+          .then((selected) => {
+            const project = projects.find(
+              (candidate) => `${candidate.environmentId}:${candidate.id}` === selected,
+            );
+            if (project) createFolder(project);
+          });
+      }}
+    >
+      <FolderPlusIcon />
+    </SidebarHeaderIconButton>
+  );
 }

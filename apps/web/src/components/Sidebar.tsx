@@ -14,7 +14,7 @@ import {
   threadHierarchyOwnerKey,
 } from "@t3tools/client-runtime/state/threadHierarchy";
 import { SidebarTaskFolders } from "./sidebar/SidebarTaskFolders";
-import { useTaskFolderActions } from "./sidebar/TaskFolderControls";
+import { NewTaskFolderButton, useTaskFolderActions } from "./sidebar/TaskFolderControls";
 import { SidebarThreadTree } from "./sidebar/SidebarThreadTree";
 import { useRevealThreadSubtasks } from "../hooks/useRevealThreadSubtasks";
 import { useAtomValue } from "@effect/atom-react";
@@ -2854,6 +2854,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
               }
               onNewProject={openAddProjectCommandPalette}
               onNewThread={handleNewThreadClick}
+              newFolderAction={
+                scopedProjectGroup ? (
+                  <NewTaskFolderButton projects={scopedProjectGroup.memberProjects} />
+                ) : null
+              }
               newThreadDisabled={projects.length === 0}
               newThreadShortcutLabel={newThreadShortcutLabel}
               newThreadInProjectShortcutLabel={newThreadInProjectShortcutLabel}

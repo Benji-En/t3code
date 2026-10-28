@@ -5,7 +5,7 @@ import {
   threadHierarchyPreviewRoots,
 } from "@t3tools/client-runtime/state/threadHierarchy";
 import { SidebarTaskFolders } from "./sidebar/SidebarTaskFolders";
-import { useTaskFolderActions } from "./sidebar/TaskFolderControls";
+import { NewTaskFolderButton, useTaskFolderActions } from "./sidebar/TaskFolderControls";
 import { useRevealThreadSubtasks } from "../hooks/useRevealThreadSubtasks";
 import { Spinner } from "~/components/ui/spinner";
 import {
@@ -2308,7 +2308,15 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
               </span>
             ) : null}
           </span>
-          <span aria-hidden className="w-4 shrink-0 max-sm:w-10" />
+          <span
+            aria-hidden
+            className={cn(
+              "shrink-0",
+              project.memberProjects.some(folderActions.canEdit)
+                ? "w-12 max-sm:w-16"
+                : "w-4 max-sm:w-10",
+            )}
+          />
         </SidebarMenuButton>
 
         {project.environmentPresence === "remote-only" && (
@@ -2334,10 +2342,15 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
             </TooltipPopup>
           </Tooltip>
         )}
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <div className="pointer-events-none absolute top-[calc(50%+1px)] right-0.5 -translate-y-1/2 opacity-0 transition-opacity duration-150 max-sm:pointer-events-auto max-sm:opacity-100 group-hover/project-header:pointer-events-auto group-hover/project-header:opacity-100 group-focus-within/project-header:pointer-events-auto group-focus-within/project-header:opacity-100">
+        <div className="pointer-events-none absolute top-[calc(50%+1px)] right-0.5 flex -translate-y-1/2 items-center opacity-0 transition-opacity duration-150 max-sm:pointer-events-auto max-sm:opacity-100 group-hover/project-header:pointer-events-auto group-hover/project-header:opacity-100 group-focus-within/project-header:pointer-events-auto group-focus-within/project-header:opacity-100">
+          <NewTaskFolderButton
+            projects={project.memberProjects}
+            className="size-6"
+            onCreate={() => setProjectExpanded(projectPreferenceKeys, true)}
+          />
+          <Tooltip>
+            <TooltipTrigger
+              render={
                 <button
                   type="button"
                   aria-label={`Create new thread in ${project.displayName}`}
@@ -2347,13 +2360,13 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
                 >
                   <SquarePenIcon className="size-3.5" />
                 </button>
-              </div>
-            }
-          />
-          <TooltipPopup side="top">
-            {newThreadShortcutLabel ? `New thread (${newThreadShortcutLabel})` : "New thread"}
-          </TooltipPopup>
-        </Tooltip>
+              }
+            />
+            <TooltipPopup side="top">
+              {newThreadShortcutLabel ? `New thread (${newThreadShortcutLabel})` : "New thread"}
+            </TooltipPopup>
+          </Tooltip>
+        </div>
       </div>
 
       <SidebarProjectThreadList
