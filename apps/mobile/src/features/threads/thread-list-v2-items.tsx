@@ -65,7 +65,6 @@ import { useSwipeRowDormant } from "../home/swipe-row-activation";
 import { ThreadSwipeable } from "../home/thread-swipe-actions";
 import { buildThreadTitleRegenerationMenuItems } from "./thread-title-regeneration-menu";
 import {
-  THREAD_LIST_V2_SETTLED_PAGE_COUNT,
   resolveThreadListV2SnoozeGateExpiryMs,
   resolveThreadListV2SnoozeMenuSelection,
   threadHasUnseenCompletion,
@@ -297,28 +296,19 @@ export const ThreadListV2SettledShelfHeader = memo(function ThreadListV2SettledS
   return <ThreadListV2ShelfHeader {...props} kind="settled" />;
 });
 
-export const ThreadListV2ShowMoreRow = memo(function ThreadListV2ShowMoreRow(props: {
+export const ThreadListV2OlderTasksRow = memo(function ThreadListV2OlderTasksRow(props: {
   readonly pane?: "screen" | "sidebar";
-  readonly hiddenCount: number;
   /** Older settled threads are loading, or their last read failed. */
-  readonly state?: "loading" | "failed";
+  readonly state: "loading" | "failed";
   readonly onPress: () => void;
 }) {
   const label =
-    props.state === "loading"
-      ? "Loading"
-      : props.state === "failed"
-        ? "Could not load older threads. Retry"
-        : `Show more (${props.hiddenCount} settled hidden)`;
+    props.state === "failed" ? "Could not load older tasks. Retry" : "Loading older tasks…";
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={
-        props.state === undefined
-          ? `Show ${Math.min(props.hiddenCount, THREAD_LIST_V2_SETTLED_PAGE_COUNT)} more settled threads`
-          : label
-      }
-      disabled={props.state === "loading"}
+      accessibilityLabel={label}
+      disabled={props.state !== "failed"}
       onPress={props.onPress}
       className="mx-4 mt-2 items-center rounded-lg border border-dashed border-border py-2.5"
       style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}

@@ -243,6 +243,31 @@ describe("wantedOlderSettledPages", () => {
     );
   });
 
+  it("loads all pages without a visible limit, stopping at the end or a pending or failed read", () => {
+    const requested = new Map([[environmentId, 8]]);
+    const next = wanted({
+      requested,
+      environments: new Map([[environmentId, { pages: full(before) }]]),
+      listed: 200,
+      visible: Number.POSITIVE_INFINITY,
+    });
+    expect(next).toEqual(new Map([[environmentId, 9]]));
+    for (const pages of [
+      { ...full(before), frontier: null },
+      { ...full(before), status: "pending" as const },
+      { ...full(before), status: "failed" as const },
+    ]) {
+      expect(
+        wanted({
+          requested: next,
+          environments: new Map([[environmentId, { pages }]]),
+          listed: 225,
+          visible: Number.POSITIVE_INFINITY,
+        }),
+      ).toBe(next);
+    }
+  });
+
   it("waits for pending pages and stops at a short page or a closed shelf", () => {
     const one = (pages: OlderSettledPages) => new Map([[environmentId, { pages }]]);
     const pending = { ...full(before), status: "pending" as const };

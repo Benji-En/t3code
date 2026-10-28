@@ -287,7 +287,7 @@ export function useTaskFolderItems(input: {
     }),
     scoped,
   );
-  const rows: ThreadListV2ListItem[] = [];
+  const rows: ThreadListV2ListItem[] = groups.unfiled.map((thread) => thread.row);
   for (const group of groups.folders) {
     const project = scoped.find(
       (project) =>
@@ -309,7 +309,6 @@ export function useTaskFolderItems(input: {
         ),
       );
   }
-  rows.push(...groups.unfiled.map((thread) => thread.row));
   for (const project of scoped)
     rows.push({
       type: "v2-folder",

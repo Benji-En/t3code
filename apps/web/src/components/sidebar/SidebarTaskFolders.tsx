@@ -161,6 +161,17 @@ export function SidebarTaskFolders<T extends FolderThread>(props: {
           void actions.move(scopeThreadRef(thread.environmentId, thread.id), null);
       }}
     >
+      {dragging && (
+        <FolderDropTarget id="task-folder-drop:root">
+          <span className="block px-2 py-1 text-xs text-sidebar-muted-foreground">
+            Project root
+          </span>
+        </FolderDropTarget>
+      )}
+      {tree(groups.unfiled)}
+      <li className="list-none">
+        <LegacySidebarDrafts projects={props.projects} taskFolderId={null} />
+      </li>
       {groups.folders.map((group, index) => {
         const open = expanded[group.key] !== false;
         const controlsId = `${id}-${index}`;
@@ -189,17 +200,6 @@ export function SidebarTaskFolders<T extends FolderThread>(props: {
           </FolderDropTarget>
         );
       })}
-      {dragging && (
-        <FolderDropTarget id="task-folder-drop:root">
-          <span className="block px-2 py-1 text-xs text-sidebar-muted-foreground">
-            Project root
-          </span>
-        </FolderDropTarget>
-      )}
-      {tree(groups.unfiled)}
-      <li className="list-none">
-        <LegacySidebarDrafts projects={props.projects} taskFolderId={null} />
-      </li>
     </DndContext>
   );
 }

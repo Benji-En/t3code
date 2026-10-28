@@ -30,12 +30,7 @@ import {
   threadDragAction,
   type ThreadMoveDestination,
 } from "./threadOrder";
-import {
-  getThreadListV2OrderedSection,
-  THREAD_LIST_V2_SETTLED_INITIAL_COUNT,
-  THREAD_LIST_V2_SETTLED_PAGE_COUNT,
-  threadListInboxReturns,
-} from "./threadListV2";
+import { getThreadListV2OrderedSection, threadListInboxReturns } from "./threadListV2";
 import { useThreadListV2ShelfPreferences } from "./use-thread-list-v2-shelf-preferences";
 
 const ROW_HEIGHT = 56;
@@ -47,7 +42,7 @@ type Row = {
   key: string;
   section: Section;
   thread?: EnvironmentThreadShell;
-  /** The Settled section's "Show more" row. */
+  /** Loading or retry row for older settled tasks. */
   more?: true;
   offset: number;
   height: number;
@@ -170,9 +165,7 @@ export function ThreadArrangementSheet(props: { onClose: () => void }) {
   const { workingShelfEnabled } = useThreadListV2ShelfPreferences();
   const [now, setNow] = useState(() => new Date().toISOString());
   const [expanded, setExpanded] = useState({ snoozed: false, settled: false });
-  const [settledVisibleCount, setSettledVisibleCount] = useState(
-    THREAD_LIST_V2_SETTLED_INITIAL_COUNT,
-  );
+  const settledVisibleCount = Number.POSITIVE_INFINITY;
   // Older settled threads load in pages, as in the thread list.
   const olderSettledShelf = useOlderSettledShelf({
     scopes: [...configs.keys()].map((environmentId) => ({ environmentId, projectIds: null })),
@@ -261,13 +254,13 @@ export function ThreadArrangementSheet(props: { onClose: () => void }) {
         result.push({ key: keyOf(thread), section, thread, offset, height: ROW_HEIGHT });
         offset += ROW_HEIGHT;
       }
-      if (section === "settled" && settledCount > visibleSettled.length) {
+      if (section === "settled" && (olderSettledShelf.loading || olderSettledShelf.failed)) {
         result.push({ key: "settled-more", section, more: true, offset, height: ROW_HEIGHT });
         offset += ROW_HEIGHT;
       }
     }
     return result;
-  }, [sections, expanded, visibleSettled, settledCount]);
+  }, [sections, expanded, visibleSettled, olderSettledShelf.loading, olderSettledShelf.failed]);
   const list = useRef<FlatList<Row>>(null);
   const geometry = useRef({ height: 0, offset: 0 });
   const drag = useRef<Drag | null>(null);
@@ -541,21 +534,16 @@ export function ThreadArrangementSheet(props: { onClose: () => void }) {
                           </>
                         ) : item.more ? (
                           <Pressable
-                            disabled={olderSettledShelf.loading}
+                            disabled={!olderSettledShelf.failed}
                             className="flex-1 justify-center self-stretch"
                             onPress={() => {
                               olderSettledShelf.retry();
-                              setSettledVisibleCount(
-                                (count) => count + THREAD_LIST_V2_SETTLED_PAGE_COUNT,
-                              );
                             }}
                           >
                             <Text className="text-sm text-foreground-muted">
-                              {olderSettledShelf.loading
-                                ? "Loading"
-                                : olderSettledShelf.failed
-                                  ? "Could not load older threads. Retry"
-                                  : `Show more (${settledCount - visibleSettled.length} settled hidden)`}
+                              {olderSettledShelf.failed
+                                ? "Could not load older tasks. Retry"
+                                : "Loading older tasks…"}
                             </Text>
                           </Pressable>
                         ) : (

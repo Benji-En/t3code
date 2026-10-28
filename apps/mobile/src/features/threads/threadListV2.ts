@@ -145,9 +145,6 @@ export function resolveThreadListV2SnoozeGateExpiryMs(
   return messageAtMs + QUEUED_TURN_START_GRACE_MS;
 }
 
-export const THREAD_LIST_V2_SETTLED_INITIAL_COUNT = 10;
-export const THREAD_LIST_V2_SETTLED_PAGE_COUNT = 25;
-
 export function threadHasUnseenCompletion(
   thread: Pick<EnvironmentThreadShell, "latestRun" | "lastVisitedAt">,
 ): boolean {

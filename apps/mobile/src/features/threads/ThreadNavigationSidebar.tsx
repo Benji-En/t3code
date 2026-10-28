@@ -64,7 +64,7 @@ import {
   ThreadListV2PendingRow,
   ThreadListV2Row,
   ThreadListV2SettledShelfHeader,
-  ThreadListV2ShowMoreRow,
+  ThreadListV2OlderTasksRow,
   ThreadListV2SnoozedShelfHeader,
   ThreadListV2WorkingShelfHeader,
 } from "./thread-list-v2-items";
@@ -73,8 +73,6 @@ import type { ThreadPrPresentation } from "../../state/thread-pr-presentation";
 import {
   isThreadListV2ListItem,
   threadListV2ListItemsAreEqual,
-  THREAD_LIST_V2_SETTLED_INITIAL_COUNT,
-  THREAD_LIST_V2_SETTLED_PAGE_COUNT,
   type ThreadListV2ListItem,
 } from "./threadListV2";
 import { useSelectWorkspaceDetail } from "../workspace/useSelectWorkspaceDetail";
@@ -83,10 +81,9 @@ import { NativeScrollView } from "../../native/NativeScrollViewMarker";
 type SidebarListItem =
   | ThreadListV2ListItem
   | {
-      readonly type: "v2-show-more";
+      readonly type: "v2-older-tasks";
       readonly key: string;
-      readonly hiddenCount: number;
-      readonly state?: "loading" | "failed";
+      readonly state: "loading" | "failed";
     };
 
 const SIDEBAR_STICKY_HEADER_HEIGHT = 106;
@@ -250,17 +247,7 @@ function ThreadNavigationSidebarPane(
     return map;
   }, [projects]);
 
-  const [settledVisibleCount, setSettledVisibleCount] = useState(
-    THREAD_LIST_V2_SETTLED_INITIAL_COUNT,
-  );
-  const settledResetKey = `${options.selectedEnvironmentId ?? "all"}:${selectedProjectKey ?? "all"}:${props.searchQuery.trim()}`;
-  const [lastSettledResetKey, setLastSettledResetKey] = useState(settledResetKey);
-  if (lastSettledResetKey !== settledResetKey) {
-    setLastSettledResetKey(settledResetKey);
-    setSettledVisibleCount(THREAD_LIST_V2_SETTLED_INITIAL_COUNT);
-  }
-  const showMoreSettled = () =>
-    setSettledVisibleCount((count) => count + THREAD_LIST_V2_SETTLED_PAGE_COUNT);
+  const settledVisibleCount = Number.POSITIVE_INFINITY;
   const {
     loaded: shelfPreferencesLoaded,
     settledShelfExpanded,
@@ -342,18 +329,13 @@ function ThreadNavigationSidebarPane(
     // oxlint-disable-next-line react/exhaustive-effect-dependencies -- snoozeWakeTick re-arms clamped timers even when the wake date exceeds 32-bit setTimeout and stays unchanged.
   }, [nextSnoozeWakeAt, snoozeWakeTick]);
   const listItems: readonly SidebarListItem[] =
-    settledShelfExpanded && threadListV2Layout.hiddenSettledCount > 0
+    settledShelfExpanded && (olderSettledShelf.loading || olderSettledShelf.failed)
       ? [
           ...threadListV2Items,
           {
-            type: "v2-show-more",
-            key: "v2-show-more",
-            hiddenCount: threadListV2Layout.hiddenSettledCount,
-            ...(olderSettledShelf.loading
-              ? { state: "loading" as const }
-              : olderSettledShelf.failed
-                ? { state: "failed" as const }
-                : {}),
+            type: "v2-older-tasks",
+            key: "v2-older-tasks",
+            state: olderSettledShelf.failed ? "failed" : "loading",
           },
         ]
       : threadListV2Items;
@@ -500,8 +482,8 @@ function ThreadNavigationSidebarPane(
     if (isThreadListV2ListItem(previous) && isThreadListV2ListItem(item)) {
       return threadListV2ListItemsAreEqual(previous, item);
     }
-    if (previous.type === "v2-show-more" && item.type === "v2-show-more") {
-      return previous.hiddenCount === item.hiddenCount && previous.state === item.state;
+    if (previous.type === "v2-older-tasks" && item.type === "v2-older-tasks") {
+      return previous.state === item.state;
     }
     return false;
   };
@@ -673,15 +655,13 @@ function ThreadNavigationSidebarPane(
             pane="sidebar"
           />
         );
-      case "v2-show-more":
+      case "v2-older-tasks":
         return (
-          <ThreadListV2ShowMoreRow
+          <ThreadListV2OlderTasksRow
             pane="sidebar"
-            hiddenCount={item.hiddenCount}
-            {...(item.state === undefined ? {} : { state: item.state })}
+            state={item.state}
             onPress={() => {
               olderSettledShelf.retry();
-              showMoreSettled();
             }}
           />
         );
