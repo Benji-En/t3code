@@ -91,6 +91,8 @@ export function SidebarTaskFolders<T extends FolderThread>(props: {
   threads: readonly T[];
   projects: readonly EnvironmentProject[];
   selectedKey: string | null;
+  showDrafts?: boolean;
+  showEmptyFolders?: boolean;
   expandedSubtasks: Readonly<Record<string, boolean>>;
   onSubtasksChange: (key: string, expanded: boolean) => void;
   renderThread: (thread: T, depth: number, toggle: ReactNode) => ReactNode;
@@ -169,10 +171,8 @@ export function SidebarTaskFolders<T extends FolderThread>(props: {
         </FolderDropTarget>
       )}
       {tree(groups.unfiled)}
-      <li className="list-none">
-        <LegacySidebarDrafts projects={props.projects} taskFolderId={null} />
-      </li>
-      {groups.folders.map((group, index) => {
+      {props.showDrafts !== false && <li className="list-none"><LegacySidebarDrafts projects={props.projects} taskFolderId={null} /></li>}
+      {groups.folders.filter((group) => props.showEmptyFolders !== false || group.threads.length > 0).map((group, index) => {
         const open = expanded[group.key] !== false;
         const controlsId = `${id}-${index}`;
         const project = props.projects.find(
@@ -191,9 +191,7 @@ export function SidebarTaskFolders<T extends FolderThread>(props: {
             />
             {open && (
               <ul id={controlsId} aria-label={group.folder.name} className="ml-3 min-w-0">
-                <li className="list-none">
-                  <LegacySidebarDrafts projects={[project]} taskFolderId={group.folder.id} />
-                </li>
+                {props.showDrafts !== false && <li className="list-none"><LegacySidebarDrafts projects={[project]} taskFolderId={group.folder.id} /></li>}
                 {tree(group.threads)}
               </ul>
             )}

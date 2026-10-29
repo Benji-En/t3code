@@ -75,6 +75,22 @@ describe("runMigrations", () => {
     }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
   );
 
+  it.effect("upgrades the fork folder schema without losing its contents", () =>
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* runMigrations({ toMigrationInclusive: 70 });
+      const folders = '[{"id":"folder-1","name":"Monitoring"}]';
+      yield* sql`INSERT INTO projection_projects
+        (project_id, title, workspace_root, scripts_json, created_at, updated_at, task_folders_json)
+        VALUES ('project-1', 'Example', '/example', '[]', '2026-10-01', '2026-10-01', ${folders})`;
+      assert.deepStrictEqual(yield* runMigrations(), migrationManifest.filter(([id]) => id > 70));
+      assert.deepStrictEqual(yield* sql`SELECT task_folders_json FROM projection_projects WHERE project_id = 'project-1'`, [{ task_folders_json: folders }]);
+      assert.deepStrictEqual(yield* history, migrationManifest);
+      assert.deepStrictEqual(yield* sql`SELECT environment_id FROM peer_environment_links`, []);
+      assert.deepStrictEqual(yield* runMigrations(), []);
+    }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
+  );
+
   it.effect.each([30, 54])("still starts with a site-local migration at id %s", (id) =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
