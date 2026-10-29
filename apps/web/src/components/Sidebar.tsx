@@ -172,6 +172,7 @@ import {
   applySidebarThreadDrop,
   filterSidebarV2VisibleThreads,
   groupSidebarThreadsByProject,
+  resolveSidebarShelfThreads,
   sidebarFolderExpansionKeys,
   buildBulkTitleRegenerationContextMenuItem,
   buildBulkUnpinContextMenuItem,
@@ -381,18 +382,10 @@ function resolveDraggedOrders(input: {
   };
 }
 
-function routeThreadOnly(
-  threads: readonly EnvironmentThreadShell[],
-  routeThreadKey: string | null,
-): readonly EnvironmentThreadShell[] {
-  if (routeThreadKey === null) return EMPTY_THREADS;
-  const routeThread = threads.find((thread) => threadShellKey(thread) === routeThreadKey);
-  return routeThread === undefined ? EMPTY_THREADS : [routeThread];
-}
-
 // Separate hooks cache maps independently of later Sidebar hooks and preserve dnd-kit inputs.
 function useSidebarThreads(input: {
   readonly subtasksExpandedByKey: Readonly<Record<string, boolean>>;
+  readonly projectView: boolean;
   readonly scopedProjectKeys: ReadonlySet<string> | null;
   readonly serverConfigs: ReadonlyMap<EnvironmentId, EnvironmentServerConfig>;
   readonly optimisticDrop: SidebarOptimisticDrop | null;
@@ -475,38 +468,44 @@ function useSidebarThreads(input: {
 
   const { pinnedThreads, activeThreads, workingThreads, snoozedThreads, settledThreads } =
     partition;
+  const shelves = resolveSidebarShelfThreads({
+    projectView: input.projectView,
+    settled: settledThreads,
+    snoozed: snoozedThreads,
+    working: workingThreads,
+    settledExpanded: settledShelfExpanded,
+    snoozedExpanded: snoozedShelfExpanded,
+    workingExpanded: workingShelfExpanded,
+    selectedKey: shelfRouteThreadKey,
+  });
+  const olderProjectKeys =
+    input.projectView && folderGroups !== null && scopedProjectKeys === null
+      ? new Set(
+          folderGroups
+            .filter((group) =>
+              resolveProjectExpanded(projectExpandedById, sidebarFolderExpansionKeys(group)),
+            )
+            .flatMap((group) =>
+              group.memberProjectRefs.map((ref) => `${ref.environmentId}:${ref.projectId}`),
+            ),
+        )
+      : scopedProjectKeys;
   // Older settled threads load in pages; the shelf lists them only as far as they are loaded.
   const olderSettledShelf = useOlderSettledShelf({
-    scopes: olderSettledScopes([...serverConfigs.keys()], scopedProjectKeys),
-    expanded: settledShelfExpanded,
+    scopes: olderSettledScopes([...serverConfigs.keys()], olderProjectKeys),
+    expanded: shelves.loadOlderSettled,
     visibleCount: settledVisibleCount,
   });
   const listedSettledThreads = settledThreads.filter(olderSettledShelf.isListed);
   useOlderSettledShelfGrowth(olderSettledShelf, listedSettledThreads);
   const settledCount =
     settledThreads.length + olderSettledShelf.unloadedCount(partition.visibleThreads);
-  const visibleSettledThreads = (() => {
-    const visible = listedSettledThreads.slice(0, settledVisibleCount);
-    if (
-      shelfRouteThreadKey !== null &&
-      !visible.some((thread) => threadShellKey(thread) === shelfRouteThreadKey)
-    ) {
-      const routeThread = settledThreads.find(
-        (thread) => threadShellKey(thread) === shelfRouteThreadKey,
-      );
-      if (routeThread !== undefined) visible.push(routeThread);
-    }
-    return visible.length === settledThreads.length ? settledThreads : visible;
-  })();
-  const renderedSettledThreads = settledShelfExpanded
-    ? visibleSettledThreads
-    : routeThreadOnly(visibleSettledThreads, shelfRouteThreadKey);
-  const visibleSnoozedThreads = snoozedShelfExpanded
-    ? snoozedThreads
-    : routeThreadOnly(snoozedThreads, shelfRouteThreadKey);
-  const visibleWorkingThreads = workingShelfExpanded
-    ? workingThreads
-    : routeThreadOnly(workingThreads, shelfRouteThreadKey);
+  const renderedSettledThreads = shelves.settled.filter(
+    (thread) =>
+      olderSettledShelf.isListed(thread) || threadShellKey(thread) === shelfRouteThreadKey,
+  );
+  const visibleSnoozedThreads = shelves.snoozed;
+  const visibleWorkingThreads = shelves.working;
   const projectFolders =
     folderGroups === null
       ? null
@@ -1277,6 +1276,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     activeKeysById,
   } = useSidebarThreads({
     subtasksExpandedByKey,
+    projectView: boringSidebarEnabled || scopedProjectGroup !== null,
     scopedProjectKeys,
     serverConfigs,
     optimisticDrop,
@@ -3321,18 +3321,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                         const roots = [
                           ...pinnedThreads,
                           ...activeThreads,
-                          ...workingThreads,
-                          ...(snoozedShelfExpanded ? snoozedThreads : []),
-                          ...(settledShelfExpanded ? renderedSettledThreads : []),
+                          ...visibleWorkingThreads,
+                          ...visibleSnoozedThreads,
+                          ...renderedSettledThreads,
                         ];
-                        const sectionFor = (thread: EnvironmentThreadShell): SidebarSection =>
-                          thread.snoozedUntil != null
-                            ? "snoozed"
-                            : thread.settledAt != null
-                              ? "settled"
-                              : thread.pinnedAt != null
-                                ? "pinned"
-                                : "active";
                         items.push(
                           <SidebarTaskFolders
                             key="project-folders"
@@ -3343,36 +3335,14 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                             expandedSubtasks={subtasksExpandedByKey}
                             onSubtasksChange={setSubtasksExpanded}
                             renderThread={(thread, _depth, toggle) =>
-                              renderThreadRow(thread, sectionFor(thread), toggle)
+                              renderThreadRow(
+                                thread,
+                                sectionByThreadKey.get(threadShellKey(thread)) ?? "active",
+                                toggle,
+                              )
                             }
                           />,
                         );
-                        if (snoozedThreads.length > 0)
-                          items.push(
-                            <SidebarSectionHeader
-                              key="snoozed-toggle"
-                              marker="snoozed-header"
-                              label="Snoozed"
-                              count={snoozedThreads.length}
-                              toggle={{
-                                expanded: snoozedShelfExpanded,
-                                onToggle: toggleSnoozedShelf,
-                              }}
-                            />,
-                          );
-                        if (settledCount > 0)
-                          items.push(
-                            <SidebarSectionHeader
-                              key="settled-toggle"
-                              marker="settled-header"
-                              label="Settled"
-                              count={settledCount}
-                              toggle={{
-                                expanded: settledShelfExpanded,
-                                onToggle: toggleSettledShelf,
-                              }}
-                            />,
-                          );
                         return items;
                       }
                       for (const item of sidebarListItems) {
@@ -3443,6 +3413,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                           }
                           continue;
                         }
+                        if (projectFolders !== null) continue;
                         switch (item.marker) {
                           case "pinned-header":
                             items.push(
@@ -3560,7 +3531,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                       }
                       return items;
                     })()}
-                    {settledShelfExpanded && olderSettledShelf.failed ? (
+                    {olderSettledShelf.visibleCount > 0 && olderSettledShelf.failed ? (
                       <li className="list-none">
                         <button
                           type="button"

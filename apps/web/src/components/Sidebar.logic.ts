@@ -37,6 +37,35 @@ import { deadlineAfter, deadlineStore } from "@t3tools/client-runtime/clock";
 import { useDeadlinePassed } from "../hooks/useDeadline";
 import { legacyProjectCwdPreferenceKey } from "../uiStateStore";
 
+const EMPTY_SHELF_THREADS: readonly never[] = [];
+
+export function resolveSidebarShelfThreads<
+  T extends Pick<SidebarThreadSummary, "environmentId" | "id">,
+>(input: {
+  readonly projectView: boolean;
+  readonly settled: readonly T[];
+  readonly snoozed: readonly T[];
+  readonly working: readonly T[];
+  readonly settledExpanded: boolean;
+  readonly snoozedExpanded: boolean;
+  readonly workingExpanded: boolean;
+  readonly selectedKey: string | null;
+}) {
+  const visible = (threads: readonly T[], expanded: boolean): readonly T[] => {
+    if (expanded) return threads;
+    const selected = threads.find(
+      (thread) => `${thread.environmentId}:${thread.id}` === input.selectedKey,
+    );
+    return selected === undefined ? EMPTY_SHELF_THREADS : [selected];
+  };
+  return {
+    loadOlderSettled: input.projectView || input.settledExpanded,
+    settled: visible(input.settled, input.projectView || input.settledExpanded),
+    snoozed: visible(input.snoozed, input.projectView || input.snoozedExpanded),
+    working: visible(input.working, input.projectView || input.workingExpanded),
+  };
+}
+
 export function shouldNavigateAfterThreadPark(input: {
   readonly threadKey: string;
   readonly currentThreadKey: string | null;

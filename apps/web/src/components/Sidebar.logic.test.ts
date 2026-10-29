@@ -13,6 +13,7 @@ import {
   hasUnseenCompletion,
   resolveSidebarRowThreadId,
   filterSidebarV2VisibleThreads,
+  resolveSidebarShelfThreads,
   orderItemsByPreferredIds,
   pinOrderKeyBetween,
   resolveProjectStatusIndicator,
@@ -167,6 +168,37 @@ describe("archiveSelectedThreadEntries", () => {
       mutationFailure: null,
       followupFailures: [failure],
     });
+  });
+});
+
+describe("sidebar shelf visibility", () => {
+  it.each([
+    { projectView: true, expanded: false, selected: false, allVisible: true },
+    { projectView: false, expanded: false, selected: false, allVisible: false },
+    { projectView: false, expanded: false, selected: true, allVisible: false },
+    { projectView: false, expanded: true, selected: false, allVisible: true },
+  ])("keeps project folders independent of global shelf collapse: %j", (scenario) => {
+    const settled = ["first", "second", "third"].map((id) =>
+      makeThread({ id: ThreadId.make(id), settledOverride: "settled", taskFolderId: "waiting" }),
+    );
+    const snoozed = [makeThread({ id: ThreadId.make("snoozed"), taskFolderId: "waiting" })];
+    const working = [makeThread({ id: ThreadId.make("working"), taskFolderId: "waiting" })];
+    const shelves = resolveSidebarShelfThreads({
+      projectView: scenario.projectView,
+      settled,
+      snoozed,
+      working,
+      settledExpanded: scenario.expanded,
+      snoozedExpanded: scenario.expanded,
+      workingExpanded: scenario.expanded,
+      selectedKey: scenario.selected ? `${settled[0]!.environmentId}:${settled[0]!.id}` : null,
+    });
+    expect(shelves.settled).toEqual(
+      scenario.allVisible ? settled : scenario.selected ? [settled[0]] : [],
+    );
+    expect(shelves.snoozed).toEqual(scenario.allVisible ? snoozed : []);
+    expect(shelves.working).toEqual(scenario.allVisible ? working : []);
+    expect(shelves.loadOlderSettled).toBe(scenario.projectView || scenario.expanded);
   });
 });
 
