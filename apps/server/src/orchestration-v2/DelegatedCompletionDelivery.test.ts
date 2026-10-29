@@ -114,6 +114,7 @@ const layerTest = Layer.mergeAll(
   RuntimeLayer.layer,
   RuntimeLayer.layerEventSink,
   ThreadCommandExecutor.layer,
+  ProjectionStore.layer,
 ).pipe(
   Layer.provideMerge(RuntimeLayer.layerProjectService),
   Layer.provide(

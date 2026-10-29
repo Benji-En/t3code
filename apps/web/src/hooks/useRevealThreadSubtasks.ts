@@ -12,7 +12,7 @@ export function useRevealThreadSubtasks(
 ) {
   const ancestorsJson = JSON.stringify(threadHierarchyAncestorKeys(threads, selectedKey));
   const setExpanded = useUiStateStore((state) => state.setThreadSubtasksExpanded);
-  // oxlint-disable-next-line t3code/react-effect-budget -- Navigation from history, links, or the palette must open the selected task's persisted ancestor groups.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Navigation from history, links, or the palette must open the selected task's persisted ancestor groups.
   useEffect(() => {
     if (selectedKey === null) return;
     setExpanded(JSON.parse(ancestorsJson) as string[], true);

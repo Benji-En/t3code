@@ -1,3 +1,4 @@
+import { threadKey as entityThreadKey } from "@t3tools/client-runtime/state/entities";
 import { resolveThreadWorkingStartedAt } from "@t3tools/client-runtime/state/models";
 import { threadHierarchyRoots } from "@t3tools/client-runtime/state/threadHierarchy";
 import { backgroundWorkHoldsCompletion } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
@@ -570,16 +571,20 @@ export function resolveSidebarRowThreadId(
  * the sidebar lists, by thread key; they show under that thread, as subagents do.
  */
 export function filterSidebarV2VisibleThreads<
-  T extends Pick<SidebarThreadSummary, "archivedAt" | "lineage"> & {
-    id: string;
-    environmentId: string;
+  T extends Pick<SidebarThreadSummary, "archivedAt" | "environmentId" | "id" | "lineage"> & {
     projectId: string;
   },
->(threads: readonly T[], scopedProjectKeys: ReadonlySet<string> | null, delegatedUnderParent: ReadonlySet<string> = new Set()): T[] {
+>(
+  threads: readonly T[],
+  scopedProjectKeys: ReadonlySet<string> | null,
+  delegatedUnderParent: ReadonlySet<string> = new Set(),
+): T[] {
   return threadHierarchyRoots(threads).filter(
     (thread) =>
       thread.archivedAt === null &&
-      !delegatedUnderParent.has(`${thread.environmentId}:${thread.id}`) &&
+      !delegatedUnderParent.has(
+        entityThreadKey({ environmentId: thread.environmentId, threadId: thread.id }),
+      ) &&
       (scopedProjectKeys === null ||
         scopedProjectKeys.has(`${thread.environmentId}:${thread.projectId}`)),
   );

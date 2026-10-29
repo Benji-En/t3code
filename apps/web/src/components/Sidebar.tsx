@@ -69,15 +69,10 @@ import {
 } from "@t3tools/contracts";
 import type { OlderSettledScope } from "@t3tools/client-runtime/state/threads";
 
-import {
-  CheckIcon,
-  FolderIcon,
-  ListFilterIcon,
-  PlusIcon,
-  SettingsIcon,
-} from "lucide-react";
+import { CheckIcon, FolderIcon, ListFilterIcon, PlusIcon, SettingsIcon } from "lucide-react";
 import {
   useEffect,
+  useEffectEvent,
   useLayoutEffect,
   useReducer,
   useRef,
@@ -449,6 +444,23 @@ function useSidebarThreads(input: {
   const projectExpandedById = useUiStateStore((store) => store.projectExpandedById);
   const setProjectExpanded = useUiStateStore((store) => store.setProjectExpanded);
   const settledVisibleCount = Number.POSITIVE_INFINITY;
+  const selectedThread = threads.find((thread) => threadShellKey(thread) === shelfRouteThreadKey);
+  const selectedProjectGroup = folderGroups?.find((group) =>
+    group.memberProjectRefs.some(
+      (ref) =>
+        ref.environmentId === selectedThread?.environmentId &&
+        ref.projectId === selectedThread?.projectId,
+    ),
+  );
+  const selectedProjectKey = selectedProjectGroup?.projectKey ?? null;
+  const revealProject = useEffectEvent(() => {
+    if (selectedProjectGroup)
+      setProjectExpanded(sidebarFolderExpansionKeys(selectedProjectGroup), true);
+  });
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Navigation reveals a project's persisted expansion once; later manual collapses remain local.
+  useEffect(() => {
+    if (routeRowThreadKey !== null && selectedProjectKey !== null) revealProject();
+  }, [routeRowThreadKey, selectedProjectKey]);
 
   const partition = partitionSidebarThreads({
     threads,
@@ -498,7 +510,11 @@ function useSidebarThreads(input: {
   const projectFolders =
     folderGroups === null
       ? null
-      : groupSidebarThreadsByProject(folderGroups, [...pinnedThreads, ...activeThreads], keepEmpty).map((folder) => {
+      : groupSidebarThreadsByProject(
+          folderGroups,
+          [...pinnedThreads, ...activeThreads, ...visibleSnoozedThreads, ...renderedSettledThreads],
+          keepEmpty,
+        ).map((folder) => {
           const collapsed = !resolveProjectExpanded(
             projectExpandedById,
             sidebarFolderExpansionKeys(folder.group),
@@ -506,24 +522,21 @@ function useSidebarThreads(input: {
           return {
             group: folder.group,
             collapsed,
-            // A closed folder still shows the open thread, and hints at the rest.
-            threads: collapsed
-              ? routeThreadOnly(folder.threads, routeRowThreadKey)
-              : folder.threads,
-            hiddenThreads: collapsed
-              ? folder.threads.filter((thread) => threadShellKey(thread) !== routeRowThreadKey)
-              : EMPTY_THREADS,
+
+            threads: collapsed ? EMPTY_THREADS : folder.threads,
+            hiddenThreads: collapsed ? folder.threads : EMPTY_THREADS,
           };
         });
-  const rootThreads = [
-    ...pinnedThreads,
-    ...(projectFolders === null
-      ? activeThreads
-      : projectFolders.flatMap((folder) => folder.threads)),
-    ...visibleWorkingThreads,
-    ...visibleSnoozedThreads,
-    ...renderedSettledThreads,
-  ];
+  const rootThreads =
+    projectFolders === null
+      ? [
+          ...pinnedThreads,
+          ...activeThreads,
+          ...visibleWorkingThreads,
+          ...visibleSnoozedThreads,
+          ...renderedSettledThreads,
+        ]
+      : projectFolders.flatMap((folder) => folder.threads);
   const orderedThreads = buildThreadHierarchy(
     rootThreads,
     threads,
@@ -1087,7 +1100,6 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     findThread: (key) => threads.find((candidate) => threadShellKey(candidate) === key),
   });
   const projectScopeKeys = revealWidensScope ? [] : chosenProjectScopeKeys;
-  const projectScopeKey = projectScopeKeys.length === 0 ? null : projectScopeKeys.join("\n");
   const toggleProjectScopeKey = (key: string) =>
     setProjectScopeKeys(
       projectScopeKeys.includes(key)
@@ -1131,6 +1143,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       projectScopeFilter.contains(item, query, (candidate) => candidate.label),
   });
   const scopedProjectGroups = revealWidensScope ? [] : chosenProjectGroups;
+  const scopedProjectGroup = scopedProjectGroups.length === 1 ? scopedProjectGroups[0]! : null;
   const scopedProjectRefs = scopedProjectGroups.flatMap((project) => project.memberProjectRefs);
   const scopedProjectKeys = revealWidensScope ? null : chosenScopeProjectKeys;
   const threadSearch = useThreadSearch(
@@ -1193,6 +1206,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   );
   const startThreadInProjectFolder = useStableCallback((group: SidebarProjectSnapshot) => {
     if (isMobile) setOpenMobile(false);
+    useUiStateStore.getState().setProjectExpanded(sidebarFolderExpansionKeys(group), true);
     void handleNewThread(scopeProjectRef(group.environmentId, group.id));
   });
   const handleProjectFolderContextMenu = useStableCallback(
@@ -1274,7 +1288,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
         ? projectGroups
         : scopedProjectGroups
       : null,
-    keepEmptyFolders: scopedProjectGroups.length > 0,
+    keepEmptyFolders: true,
   });
   useRevealThreadSubtasks(threads, routeThreadKey);
 
@@ -3363,7 +3377,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                       }
                       for (const item of sidebarListItems) {
                         if (item.kind === "thread") {
-                          if (projectFolders !== null && (item.section === "active" || item.section === "pinned")) continue;
+                          if (projectFolders !== null) continue;
                           const node = hierarchyTreesByKey.get(item.key);
                           if (node)
                             items.push(
@@ -3389,7 +3403,19 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                                 hiddenThreads={folder.hiddenThreads}
                                 onToggle={toggleProjectFolder}
                                 onNewThread={startThreadInProjectFolder}
-                                folderAction={<NewTaskFolderButton projects={folder.group.memberProjects} />}
+                                folderAction={
+                                  <NewTaskFolderButton
+                                    projects={folder.group.memberProjects}
+                                    onCreate={() =>
+                                      useUiStateStore
+                                        .getState()
+                                        .setProjectExpanded(
+                                          sidebarFolderExpansionKeys(folder.group),
+                                          true,
+                                        )
+                                    }
+                                  />
+                                }
                                 onContextMenu={handleProjectFolderContextMenu}
                               />,
                             );
@@ -3404,7 +3430,14 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                                 onSubtasksChange={setSubtasksExpanded}
                                 showDrafts={!folder.collapsed}
                                 showEmptyFolders={!folder.collapsed}
-                                renderThread={(thread, _depth, toggle) => renderThreadRow(thread, thread.pinnedAt != null ? "pinned" : "active", toggle, sidebarFolderRowId(folder.group.projectKey))}
+                                renderThread={(thread, _depth, toggle) =>
+                                  renderThreadRow(
+                                    thread,
+                                    sectionByThreadKey.get(threadShellKey(thread)) ?? "active",
+                                    toggle,
+                                    sidebarFolderRowId(folder.group.projectKey),
+                                  )
+                                }
                               />,
                             );
                           }

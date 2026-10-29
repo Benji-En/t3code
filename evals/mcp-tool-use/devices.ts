@@ -791,7 +791,7 @@ export const makeDeviceTools = Effect.fn("evaluateMcpToolUse.makeDeviceTools")(f
       Layer.provideMerge(config),
       Layer.provideMerge(files),
     ),
-  );
+  ).pipe(Effect.provide(Path.layer));
   type Entry = Parameters<McpServer.McpServer["Service"]["addTool"]>[0];
   // The registry keeps each tool's handler; its public type lists only definitions.
   const tools = Context.get(context, McpServer.McpServer).tools as ReadonlyArray<Entry>;

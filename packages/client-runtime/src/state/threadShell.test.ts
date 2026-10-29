@@ -12,6 +12,7 @@ import * as Option from "effect/Option";
 import { Atom, AtomRegistry } from "effect/reactivity";
 import { describe, expect, it } from "vite-plus/test";
 
+import { threadHierarchyRoots } from "./threadHierarchy.ts";
 import { PrimaryConnectionTarget } from "../connection/model.ts";
 import { v2Now, v2ShellSnapshot, v2ThreadShell } from "./orchestrationV2TestFixtures.ts";
 import { applyShellStreamEvent } from "./shellReducer.ts";
@@ -279,9 +280,9 @@ describe("v2 thread shell lists", () => {
     const disposeParent = registry.mount(threads.threadShellAtom(parentRef));
     const disposeInputs = registry.mount(inputs);
     const listed = () =>
-      registry
-        .get(threads.navigationThreadShellsAtom)
-        .map((thread) => `${thread.environmentId}/${thread.id}`);
+      threadHierarchyRoots(registry.get(threads.navigationThreadShellsAtom)).map(
+        (thread) => `${thread.environmentId}/${thread.id}`,
+      );
     expect(listed()).toEqual([`${environmentId}/${parent.id}`]);
 
     // The helper the task started there asks for approval: the parent here hears of it.

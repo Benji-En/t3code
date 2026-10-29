@@ -1,3 +1,4 @@
+import { threadKey as entityThreadKey } from "@t3tools/client-runtime/state/entities";
 import { presentThreadShell } from "@t3tools/client-runtime/state/models";
 import { isThreadWorking as isSidebarThreadWorking } from "@t3tools/client-runtime/state/thread-inbox";
 import * as DateTime from "effect/DateTime";
@@ -11,6 +12,7 @@ import {
   getFallbackThreadIdAfterDelete,
   hasUnseenCompletion,
   resolveSidebarRowThreadId,
+  filterSidebarV2VisibleThreads,
   orderItemsByPreferredIds,
   pinOrderKeyBetween,
   resolveProjectStatusIndicator,
@@ -169,6 +171,23 @@ describe("archiveSelectedThreadEntries", () => {
 });
 
 describe("sidebar thread lineage helpers", () => {
+  it("keeps linked tasks under their parent while preserving local subtask roots", () => {
+    const parent = makeThread({ id: ThreadId.make("parent") });
+    const child = makeThread({
+      id: ThreadId.make("child"),
+      lineage: {
+        rootThreadId: parent.id,
+        parentThreadId: parent.id,
+        relationshipToParent: "subagent",
+      },
+    });
+    const linked = makeThread({ id: ThreadId.make("linked") });
+    const hidden = new Set([
+      entityThreadKey({ environmentId: linked.environmentId, threadId: linked.id }),
+    ]);
+    expect(filterSidebarV2VisibleThreads([parent, child, linked], null, hidden)).toEqual([parent]);
+  });
+
   it("maps an open subagent to its nearest visible ancestor's sidebar row", () => {
     const environmentId = EnvironmentId.make("environment-row");
     const otherEnvironmentId = EnvironmentId.make("environment-other");

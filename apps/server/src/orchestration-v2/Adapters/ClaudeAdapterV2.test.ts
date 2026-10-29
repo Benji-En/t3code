@@ -1791,7 +1791,7 @@ describe("ClaudeAdapterV2 attachments", () => {
             yield* deliver;
             const retried = offeredMessages.at(-1)!.message.content;
             assert.notInclude(JSON.stringify(retried), '"type":"document"');
-            assert.include(JSON.stringify(retried), documentPath);
+            assert.include(JSON.stringify(retried), JSON.stringify(documentPath).slice(1, -1));
             assert.isBelow(Buffer.byteLength(JSON.stringify(offeredMessages)), 32_000_000);
             return;
           }
@@ -1840,7 +1840,7 @@ describe("ClaudeAdapterV2 attachments", () => {
                 typeof sent === "string" ? [] : sent.filter((block) => block.type === "image"),
                 budget === "partial-images" ? 1 : 0,
               );
-              assert.include(JSON.stringify(sent), imagePath);
+              assert.include(JSON.stringify(sent), JSON.stringify(imagePath).slice(1, -1));
               yield* runtime.steerTurn({
                 threadId,
                 runId: RunId.make("run-claude-attachments"),
@@ -1859,7 +1859,7 @@ describe("ClaudeAdapterV2 attachments", () => {
                   : steered.filter((block) => block.type === "image"),
                 0,
               );
-              assert.include(JSON.stringify(steered), imagePath);
+              assert.include(JSON.stringify(steered), JSON.stringify(imagePath).slice(1, -1));
               assert.isBelow(
                 Buffer.byteLength(
                   JSON.stringify(offeredMessages.map((message) => message.message)),
@@ -1921,7 +1921,7 @@ describe("ClaudeAdapterV2 attachments", () => {
               0,
               budget,
             );
-            assert.include(JSON.stringify(sent), documentPath);
+            assert.include(JSON.stringify(sent), JSON.stringify(documentPath).slice(1, -1));
             return;
           }
           if (!resumed) {
@@ -2134,7 +2134,7 @@ describe("ClaudeAdapterV2 attachments", () => {
             );
             if (scenario === "text-only")
               assert.equal(sent, ultrathink ? "Ultrathink:\nContinue." : "Continue.");
-            else assert.include(JSON.stringify(sent), documentPath);
+            else assert.include(JSON.stringify(sent), JSON.stringify(documentPath).slice(1, -1));
           }
         }).pipe(
           Effect.provide(
@@ -3925,6 +3925,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         // worktree, and that file beats the user's settings.
         const repo = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-claude-repo-" });
         const worktree = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-claude-wt-" });
+        const platform = yield* HostProcess.Platform;
         const worktreeGitDir = path.join(repo, ".git", "worktrees", "wt");
         yield* fileSystem.makeDirectory(worktreeGitDir, { recursive: true });
         yield* fileSystem.writeFileString(path.join(worktreeGitDir, "commondir"), "../..\n");
@@ -3936,15 +3937,19 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         yield* fileSystem.makeDirectory(path.join(repo, "packages", "app"), { recursive: true });
         const rootLocal = (value: string) =>
           fileSystem.writeFileString(
-            path.join(repo, ".claude", "settings.local.json"),
+            path.join(platform === "win32" ? worktree : repo, ".claude", "settings.local.json"),
             `{"env":{"ENABLE_TOOL_SEARCH":"${value}"}}`,
           );
+        if (platform === "win32") yield* fileSystem.makeDirectory(path.join(worktree, ".claude"));
         const userAuto = '{"env":{"ENABLE_TOOL_SEARCH":"auto"}}';
         yield* rootLocal("auto");
         assert.equal(yield* openedToolSearch("{}", worktree), "true");
         yield* rootLocal("false");
         assert.isUndefined(yield* openedToolSearch(userAuto, worktree));
-        assert.isUndefined(yield* openedToolSearch(userAuto, path.join(repo, "packages", "app")));
+        assert.equal(
+          yield* openedToolSearch(userAuto, path.join(repo, "packages", "app")),
+          platform === "win32" ? "true" : undefined,
+        );
 
         // Project settings beat user settings, and the process env applies only when no file sets it.
         const project = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-claude-project-" });

@@ -126,7 +126,7 @@ export function SidebarTaskFolders<T extends FolderThread>(props: {
     setExpanded((current) => ({ ...current, [key]: true })),
   );
   const navigationKey = props.selectedKey ?? (route?.kind === "draft" ? route.draftId : null);
-  // oxlint-disable-next-line t3code/react-effect-budget -- Route navigation must reveal the selected task's persisted folder.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Route navigation must reveal the selected task's persisted folder.
   useEffect(() => {
     if (navigationKey !== null && selectedFolderKey !== null) reveal(selectedFolderKey);
   }, [navigationKey, selectedFolderKey]);
@@ -171,33 +171,43 @@ export function SidebarTaskFolders<T extends FolderThread>(props: {
         </FolderDropTarget>
       )}
       {tree(groups.unfiled)}
-      {props.showDrafts !== false && <li className="list-none"><LegacySidebarDrafts projects={props.projects} taskFolderId={null} /></li>}
-      {groups.folders.filter((group) => props.showEmptyFolders !== false || group.threads.length > 0).map((group, index) => {
-        const open = expanded[group.key] !== false;
-        const controlsId = `${id}-${index}`;
-        const project = props.projects.find(
-          (candidate) =>
-            candidate.id === group.project.id &&
-            candidate.environmentId === group.project.environmentId,
-        )!;
-        return (
-          <FolderDropTarget key={group.key} id={`task-folder-drop:${group.key}`}>
-            <FolderHeader
-              project={project}
-              folder={group.folder}
-              expanded={open}
-              controlsId={controlsId}
-              toggle={() => setExpanded((current) => ({ ...current, [group.key]: !open }))}
-            />
-            {open && (
-              <ul id={controlsId} aria-label={group.folder.name} className="ml-3 min-w-0">
-                {props.showDrafts !== false && <li className="list-none"><LegacySidebarDrafts projects={[project]} taskFolderId={group.folder.id} /></li>}
-                {tree(group.threads)}
-              </ul>
-            )}
-          </FolderDropTarget>
-        );
-      })}
+      {props.showDrafts !== false && (
+        <li className="list-none">
+          <LegacySidebarDrafts projects={props.projects} taskFolderId={null} />
+        </li>
+      )}
+      {groups.folders
+        .filter((group) => props.showEmptyFolders !== false || group.threads.length > 0)
+        .map((group, index) => {
+          const open = expanded[group.key] !== false;
+          const controlsId = `${id}-${index}`;
+          const project = props.projects.find(
+            (candidate) =>
+              candidate.id === group.project.id &&
+              candidate.environmentId === group.project.environmentId,
+          )!;
+          return (
+            <FolderDropTarget key={group.key} id={`task-folder-drop:${group.key}`}>
+              <FolderHeader
+                project={project}
+                folder={group.folder}
+                expanded={open}
+                controlsId={controlsId}
+                toggle={() => setExpanded((current) => ({ ...current, [group.key]: !open }))}
+              />
+              {open && (
+                <ul id={controlsId} aria-label={group.folder.name} className="ml-3 min-w-0">
+                  {props.showDrafts !== false && (
+                    <li className="list-none">
+                      <LegacySidebarDrafts projects={[project]} taskFolderId={group.folder.id} />
+                    </li>
+                  )}
+                  {tree(group.threads)}
+                </ul>
+              )}
+            </FolderDropTarget>
+          );
+        })}
     </DndContext>
   );
 }

@@ -285,7 +285,6 @@ function ThreadNavigationSidebarPane(
     loaded: subtasksLoaded,
   } = useThreadSubtaskPreferences(threads, props.selectedThreadKey);
   const {
-    layout: threadListV2Layout,
     items: threadListV2Items,
     contentOnlyThreadKeys,
     olderSettledShelf,

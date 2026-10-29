@@ -243,7 +243,7 @@ export function useTaskFolderItems(input: {
         }),
       });
   });
-  // oxlint-disable-next-line t3code/react-effect-budget -- Navigation reveals the selected task's folder once without overriding later manual folds.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Navigation reveals the selected task's folder once without overriding later manual folds.
   useEffect(() => {
     if (loaded && selectedKey !== null && revealKey) reveal(revealKey);
   }, [revealKey, selectedKey, loaded]);

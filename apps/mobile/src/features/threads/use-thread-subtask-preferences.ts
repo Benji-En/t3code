@@ -31,7 +31,7 @@ export function useThreadSubtaskPreferences(
     });
   });
   const ancestorsJson = JSON.stringify(threadHierarchyAncestorKeys(threads, selectedKey));
-  // oxlint-disable-next-line t3code/react-effect-budget -- Navigation from either screen or history must open the selected task's persisted ancestor groups.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Navigation from either screen or history must open the selected task's persisted ancestor groups.
   useEffect(() => {
     if (!loaded || selectedKey === null) return;
     revealAncestors(JSON.parse(ancestorsJson) as string[]);

@@ -552,8 +552,27 @@ export function createEnvironmentThreadShellAtoms(input: {
     const underParent = get(delegatedUnderParentAtom);
     for (const environmentId of enabledEnvironmentIds(get(input.catalogValueAtom))) {
       const subagentRequests = get(pendingSubagentRequestsAtom(environmentId));
-      for (const thread of get(environmentThreadsAtom(environmentId))) {
-        if (thread.archivedAt !== null || underParent.has(threadKey({ environmentId, threadId: thread.id }))) continue;
+      threadLoop: for (const thread of get(environmentThreadsAtom(environmentId))) {
+        if (thread.archivedAt !== null) continue;
+        if (underParent.size > 0) {
+          let owner = thread;
+          const seen = new Set<ThreadId>();
+          while (!seen.has(owner.id)) {
+            seen.add(owner.id);
+            if (underParent.has(threadKey({ environmentId, threadId: owner.id })))
+              continue threadLoop;
+            if (
+              owner.lineage.relationshipToParent !== "subagent" ||
+              owner.lineage.parentThreadId === null
+            )
+              break;
+            const parent = get(environmentThreadIndexAtom(environmentId)).get(
+              owner.lineage.parentThreadId,
+            );
+            if (!parent || parent.archivedAt !== null) break;
+            owner = parent;
+          }
+        }
         next.push(scopedThread(environmentId, thread, subagentRequests));
       }
     }

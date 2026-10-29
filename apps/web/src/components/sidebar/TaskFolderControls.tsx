@@ -50,7 +50,7 @@ function requestName(input: Omit<NameRequest, "resolve">): Promise<string | null
 
 export function TaskFolderDialogHost() {
   const request = useNameRequest((state) => state.request);
-  // oxlint-disable-next-line t3code/react-effect-budget -- Release pending dialog requests when the application unmounts.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Release pending dialog requests when the application unmounts.
   useEffect(() => () => finishName(null), []);
   return request ? <TaskFolderNameDialog request={request} /> : null;
 }
