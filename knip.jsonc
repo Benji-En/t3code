@@ -25,6 +25,11 @@
       // release-desktop.yml runs the desktop launch check through xvfb-run, which knip
       // does not trace.
       "entry": [
+        // The isolated Windows launcher loads these entry points by filename.
+        "benji-fork/backend-cache.cjs",
+        "benji-fork/desktop-bootstrap.cjs",
+        "benji-fork/stage-client.mjs",
+        "benji-fork/start-desktop.mjs",
         // These fixture scripts are injected into a browser page by path.
         "fixtures/*/*.js",
         "knip-schemas.ts",
