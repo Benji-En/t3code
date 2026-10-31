@@ -87,10 +87,13 @@ describe("runMigrations", () => {
         (project_id, title, workspace_root, scripts_json, created_at, updated_at, task_folders_json)
         VALUES ('project-1', 'Example', '/example', '[]', '2026-10-01', '2026-10-01', ${folders})`;
       assert.deepStrictEqual(
-        yield* runMigrations({ toMigrationInclusive: 73 }),
-        migrationManifest.filter(([id]) => id > 70 && id <= 73),
+        yield* runMigrations({ toMigrationInclusive: 74 }),
+        migrationManifest.filter(([id]) => id > 70 && id <= 74),
       );
-      assert.deepStrictEqual(yield* runMigrations(), [[74, "ActiveTurnItemIndexes"]]);
+      assert.deepStrictEqual(yield* runMigrations(), [
+        [75, "ExcludeAttachmentPlaceholdersFromSearch"],
+        [76, "SubagentDeliveryState"],
+      ]);
       assert.deepStrictEqual(
         yield* sql`SELECT task_folders_json FROM projection_projects WHERE project_id = 'project-1'`,
         [{ task_folders_json: folders }],
