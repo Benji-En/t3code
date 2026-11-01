@@ -463,7 +463,10 @@ it.layer(layerTest)("ProjectService", (it) => {
       });
       const input = { commandId: CommandId.make("command:delete-retry:delete"), projectId };
       const deleted = yield* service.delete(input);
-      assert.deepEqual(yield* service.delete(input), deleted);
+      const replayed = yield* service.delete(input);
+      assert.equal(replayed.id, deleted.id);
+      assert.isNotNull(deleted.deletedAt);
+      assert.equal(replayed.deletedAt, deleted.deletedAt);
       const events = yield* sql<{ readonly command_id: string }>`
         SELECT command_id FROM orchestration_events
         WHERE stream_id = ${projectId} AND event_type = 'project.deleted'

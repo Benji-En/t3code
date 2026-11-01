@@ -41,6 +41,8 @@ export const ProjectRow = Schema.Struct({
   faviconPath: Schema.NullOr(Schema.String),
   projectIcon: Schema.NullOr(StoredProjectIcon),
   scripts: Schema.Array(ProjectScript),
+  pinnedAt: Schema.NullOr(IsoDateTime),
+  archivedAt: Schema.NullOr(IsoDateTime),
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
   deletedAt: Schema.NullOr(IsoDateTime),
@@ -69,6 +71,8 @@ function toShell(row: ProjectRow): OrchestrationProjectShell {
     projectIcon: row.projectIcon,
     scripts: row.scripts,
     taskFolders: row.taskFolders ?? [],
+    pinnedAt: row.pinnedAt,
+    archivedAt: row.archivedAt,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
@@ -125,6 +129,8 @@ export const make = Effect.gen(function* () {
         project_icon_json AS "projectIcon",
         scripts_json AS "scripts",
         task_folders_json AS "taskFolders",
+        pinned_at AS "pinnedAt",
+        archived_at AS "archivedAt",
         created_at AS "createdAt",
         updated_at AS "updatedAt",
         deleted_at AS "deletedAt"
@@ -156,6 +162,8 @@ export const make = Effect.gen(function* () {
             project_icon_json,
             scripts_json,
             task_folders_json,
+            pinned_at,
+            archived_at,
             created_at,
             updated_at,
             deleted_at
@@ -171,6 +179,8 @@ export const make = Effect.gen(function* () {
             ${encoded.projectIcon},
             ${encoded.scripts},
             ${encoded.taskFolders},
+            ${encoded.pinnedAt},
+            ${encoded.archivedAt},
             ${encoded.createdAt},
             ${encoded.updatedAt},
             ${encoded.deletedAt}
@@ -186,6 +196,8 @@ export const make = Effect.gen(function* () {
             project_icon_json = excluded.project_icon_json,
             scripts_json = excluded.scripts_json,
             task_folders_json = excluded.task_folders_json,
+            pinned_at = excluded.pinned_at,
+            archived_at = excluded.archived_at,
             created_at = excluded.created_at,
             updated_at = excluded.updated_at,
             deleted_at = excluded.deleted_at
@@ -235,6 +247,8 @@ export const make = Effect.gen(function* () {
           projectIcon: payload.projectIcon ?? null,
           scripts: payload.scripts,
           taskFolders: [],
+          pinnedAt: null,
+          archivedAt: null,
           createdAt: payload.createdAt,
           updatedAt: payload.updatedAt,
           deletedAt: null,
@@ -266,6 +280,8 @@ export const make = Effect.gen(function* () {
         ...(payload.projectIcon === undefined ? {} : { projectIcon: payload.projectIcon }),
         ...(payload.scripts === undefined ? {} : { scripts: payload.scripts }),
         ...(payload.taskFolders === undefined ? {} : { taskFolders: payload.taskFolders }),
+        ...(payload.pinnedAt === undefined ? {} : { pinnedAt: payload.pinnedAt }),
+        ...(payload.archivedAt === undefined ? {} : { archivedAt: payload.archivedAt }),
         updatedAt: payload.updatedAt,
       }).pipe(mapError("apply"));
     },

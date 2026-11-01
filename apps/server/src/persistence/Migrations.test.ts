@@ -93,10 +93,11 @@ describe("runMigrations", () => {
       assert.deepStrictEqual(yield* runMigrations(), [
         [75, "ExcludeAttachmentPlaceholdersFromSearch"],
         [76, "SubagentDeliveryState"],
+        [77, "ProjectionProjectsPinArchive"],
       ]);
       assert.deepStrictEqual(
-        yield* sql`SELECT task_folders_json FROM projection_projects WHERE project_id = 'project-1'`,
-        [{ task_folders_json: folders }],
+        yield* sql`SELECT task_folders_json, pinned_at, archived_at FROM projection_projects WHERE project_id = 'project-1'`,
+        [{ task_folders_json: folders, pinned_at: null, archived_at: null }],
       );
       assert.deepStrictEqual(yield* history, migrationManifest);
       assert.deepStrictEqual(yield* sql`SELECT environment_id FROM peer_environment_links`, []);

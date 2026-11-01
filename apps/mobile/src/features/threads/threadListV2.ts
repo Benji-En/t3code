@@ -267,6 +267,7 @@ export function getThreadListV2OrderedSection(input: {
 }): EnvironmentThreadShell[] {
   const queuedThreadKeys = input.queuedThreadKeys?.size ? input.queuedThreadKeys : undefined;
   const threads = threadHierarchyRoots(input.threads).filter((thread) => {
+    if (thread.lineage.sideChat === true) return false;
     if (
       (input.settlementEnvironmentIds?.has(thread.environmentId) ?? true) &&
       thread.settledOverride === "settled" &&
@@ -672,6 +673,7 @@ export function buildThreadListV2Items(input: {
   const listedThreads = threadHierarchyRoots(input.threads).filter(
     (thread) =>
       thread.archivedAt === null &&
+      thread.lineage.sideChat !== true &&
       (input.environmentId === null || thread.environmentId === input.environmentId) &&
       (projectKeys === null || projectKeys.has(`${thread.environmentId}:${thread.projectId}`)),
   );
