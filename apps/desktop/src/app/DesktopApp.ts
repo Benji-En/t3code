@@ -245,16 +245,15 @@ const bootstrap = Effect.gen(function* () {
     }
     yield* primaryBackend.start;
     yield* logBootstrapInfo("bootstrap backend start requested");
-    // This source fork serves bundled client assets without waiting for HTTP.
-    // The renderer can connect in the background; official launches keep the
-    // existing readiness gate, as does WSL-only startup.
+    // WSL-only fallback can change the primary endpoint before readiness.
+    const config = yield* primaryBackend.currentConfig;
     if (
-      environment.platform === "win32" &&
-      environment.appUserModelId === "com.benji.t3code.fork" &&
       !environment.isDevelopment &&
-      !settings.wslOnly
+      !settings.wslOnly &&
+      Option.isSome(config) &&
+      Option.isNone(config.value.preflightFailure)
     ) {
-      yield* desktopWindow.createMain;
+      yield* desktopWindow.ensureMain;
     }
     yield* appActivation.start.pipe(
       Effect.tap(() => logBootstrapInfo("desktop app control socket ready")),

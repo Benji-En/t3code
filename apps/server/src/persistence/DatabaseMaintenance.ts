@@ -1,5 +1,5 @@
-import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
 import * as HostProcess from "@t3tools/shared/HostProcess";
+import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -143,7 +143,6 @@ const lockExclusively = Effect.fn("DatabaseMaintenance.lockExclusively")(functio
 const make = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  const isWindows = yield* HostProcess.isWindows;
   const legacyPath = (databasePath: string) =>
     path.join(path.dirname(databasePath), "state.sqlite");
 
@@ -222,19 +221,23 @@ const make = Effect.gen(function* () {
     function* (databasePath: string) {
       const legacy = legacyPath(databasePath);
       if (!(yield* fs.exists(legacy))) return;
+      // Delete the database before WAL to preserve commits if unlink fails.
       const removeFiles = Effect.forEach(
         ["", "-wal", "-shm"],
         (suffix) => fs.remove(legacy + suffix, { force: true }),
         { discard: true },
       );
-      // Delete the database before its WAL so a failure preserves committed data.
-      yield* Effect.gen(function* () {
-        yield* lockExclusively(legacy);
-        if (!isWindows) yield* removeFiles;
-      }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: legacy })));
-      // Windows refuses unlink while our own SQLite connection is open. Close
-      // it first; the OS still refuses deletion if another process opens the file.
-      if (isWindows) yield* removeFiles;
+      const connection = NodeSqliteClient.layer({ filename: legacy });
+      if ((yield* HostProcess.Platform) === "win32") {
+        // Windows blocks unlink while any SQLite handle is open, including our own.
+        yield* lockExclusively(legacy).pipe(Effect.provide(connection));
+        yield* removeFiles;
+      } else {
+        yield* lockExclusively(legacy).pipe(
+          Effect.andThen(removeFiles),
+          Effect.provide(connection),
+        );
+      }
     },
     (effect, databasePath) =>
       effect.pipe(

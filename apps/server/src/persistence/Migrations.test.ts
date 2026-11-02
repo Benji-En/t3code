@@ -94,6 +94,7 @@ describe("runMigrations", () => {
         [75, "ExcludeAttachmentPlaceholdersFromSearch"],
         [76, "SubagentDeliveryState"],
         [77, "ProjectionProjectsPinArchive"],
+        [78, "RepairBooleanSettledOverride"],
       ]);
       assert.deepStrictEqual(
         yield* sql`SELECT task_folders_json, pinned_at, archived_at FROM projection_projects WHERE project_id = 'project-1'`,
