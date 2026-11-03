@@ -86,6 +86,8 @@ import Migration0077 from "./Migrations/077_ProjectionProjectsPinArchive.ts";
 
 import Migration0078 from "./Migrations/078_RepairBooleanSettledOverride.ts";
 
+import Migration0079 from "./Migrations/079_DropOrchestrationEventCorrelationIndex.ts";
+
 const migrationEntries = [
   [1, "OrchestrationEvents", Migration0001],
   [2, "OrchestrationCommandReceipts", Migration0002],
@@ -166,6 +168,7 @@ const migrationEntries = [
   [76, "SubagentDeliveryState", Migration0076],
   [77, "ProjectionProjectsPinArchive", Migration0077],
   [78, "RepairBooleanSettledOverride", Migration0078],
+  [79, "DropOrchestrationEventCorrelationIndex", Migration0079],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);

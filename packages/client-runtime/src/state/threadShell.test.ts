@@ -24,6 +24,9 @@ const remoteEnvironmentId = EnvironmentId.make("remote-environment-v2");
 const otherProjectId = ProjectId.make("other-project");
 
 function makeHarness(environmentIds: ReadonlyArray<EnvironmentId> = [environmentId]) {
+  const hiddenThreadTagsAtom = Atom.family((_environmentId: EnvironmentId) =>
+    Atom.make<ReadonlyArray<string> | null>(null),
+  );
   const snapshotAtom = Atom.family((_environmentId: EnvironmentId) =>
     Atom.make<OrchestrationV2ShellSnapshot | null>(v2ShellSnapshot),
   );
@@ -49,11 +52,62 @@ function makeHarness(environmentIds: ReadonlyArray<EnvironmentId> = [environment
     registry: AtomRegistry.make(),
     snapshotAtom,
     catalogValueAtom,
-    threads: createEnvironmentThreadShellAtoms({ catalogValueAtom, snapshotAtom }),
+    hiddenThreadTagsAtom,
+    threads: createEnvironmentThreadShellAtoms({
+      catalogValueAtom,
+      snapshotAtom,
+      hiddenThreadTagsAtom,
+    }),
   };
 }
 
 describe("v2 thread shell lists", () => {
+  it("filters tagged subtask families from navigation while retaining their stored shells", () => {
+    const { registry, threads, snapshotAtom, hiddenThreadTagsAtom } = makeHarness();
+    const root = { ...v2ThreadShell, tags: ["private"] };
+    const child = {
+      ...root,
+      id: ThreadId.make("private-child"),
+      tags: [],
+      lineage: {
+        ...root.lineage,
+        parentThreadId: root.id,
+        relationshipToParent: "subagent" as const,
+      },
+    };
+    const visible = { ...v2ThreadShell, id: ThreadId.make("visible"), tags: [] };
+    registry.set(snapshotAtom(environmentId), {
+      ...v2ShellSnapshot,
+      threads: [root, child, visible],
+    });
+    const dispose = registry.mount(threads.navigationThreadShellsAtom);
+    try {
+      expect(registry.get(threads.navigationThreadShellsAtom).map((thread) => thread.id)).toEqual([
+        root.id,
+        child.id,
+        visible.id,
+      ]);
+      registry.set(hiddenThreadTagsAtom(environmentId), ["private"]);
+      expect(registry.get(threads.navigationThreadShellsAtom).map((thread) => thread.id)).toEqual([
+        visible.id,
+      ]);
+      expect(registry.get(threads.threadShellsAtom).map((thread) => thread.id)).toEqual([
+        root.id,
+        child.id,
+        visible.id,
+      ]);
+      registry.set(hiddenThreadTagsAtom(environmentId), null);
+      expect(registry.get(threads.navigationThreadShellsAtom).map((thread) => thread.id)).toEqual([
+        root.id,
+        child.id,
+        visible.id,
+      ]);
+    } finally {
+      dispose();
+      registry.dispose();
+    }
+  });
+
   it("preserves ordered reference arrays when a middle thread changes", () => {
     const { registry, threads, snapshotAtom } = makeHarness();
     const snapshot = {
