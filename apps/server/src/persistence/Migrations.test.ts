@@ -96,6 +96,7 @@ describe("runMigrations", () => {
         [77, "ProjectionProjectsPinArchive"],
         [78, "RepairBooleanSettledOverride"],
         [79, "DropOrchestrationEventCorrelationIndex"],
+        [80, "DelegatedRecoveryIndexes"],
       ]);
       assert.deepStrictEqual(
         yield* sql`SELECT task_folders_json, pinned_at, archived_at FROM projection_projects WHERE project_id = 'project-1'`,
