@@ -89,6 +89,7 @@ import Migration0078 from "./Migrations/078_RepairBooleanSettledOverride.ts";
 import Migration0079 from "./Migrations/079_DropOrchestrationEventCorrelationIndex.ts";
 
 import Migration0080 from "./Migrations/080_DelegatedRecoveryIndexes.ts";
+import Migration0081 from "./Migrations/081_ScheduledTaskThreadMode.ts";
 
 const migrationEntries = [
   [1, "OrchestrationEvents", Migration0001],
@@ -172,6 +173,7 @@ const migrationEntries = [
   [78, "RepairBooleanSettledOverride", Migration0078],
   [79, "DropOrchestrationEventCorrelationIndex", Migration0079],
   [80, "DelegatedRecoveryIndexes", Migration0080],
+  [81, "ScheduledTaskThreadMode", Migration0081],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);

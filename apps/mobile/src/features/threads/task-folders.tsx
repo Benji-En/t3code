@@ -25,7 +25,7 @@ import { useProjects, useServerConfigs } from "../../state/entities";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { readEnvironmentScope } from "../../state/session";
 import { createNewTaskDraft } from "../../state/use-composer-drafts";
-import { useSelectWorkspaceDetail } from "../workspace/useSelectWorkspaceDetail";
+import { useSelectWorkspaceDetail } from "../layout/workspace/useSelectWorkspaceDetail";
 import { uuidv4 } from "../../lib/uuid";
 import { useActiveNewTask } from "../../state/active-new-task";
 import type { ThreadListV2ListItem } from "./threadListV2";
