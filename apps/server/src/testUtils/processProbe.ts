@@ -20,6 +20,12 @@ export const makeProcessProbe = Effect.gen(function* () {
         }
       }
     });
+    // Terminating a Windows fixture can reset its socket before close is emitted.
+    socket.on("error", (error) => {
+      if ((error as NodeJS.ErrnoException).code === "ECONNRESET") return;
+      Deferred.doneUnsafe(started, Effect.die(error));
+      Deferred.doneUnsafe(exited, Effect.die(error));
+    });
     socket.on("close", () => {
       sockets.delete(socket);
       Deferred.doneUnsafe(exited, Effect.void);

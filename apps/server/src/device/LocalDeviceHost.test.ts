@@ -511,7 +511,7 @@ it.effect.each([
             );
           },
         }),
-        Effect.provide(NodeServices.layer),
+        Effect.provide(Layer.mergeAll(NodeServices.layer, NodePath.layerPosix)),
       );
     expect(result.EXPO_DEVICE_HUB_EMULATOR_EXTRA_ARGS).toBe(expected);
   }),
