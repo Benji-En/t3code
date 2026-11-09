@@ -303,6 +303,35 @@ describe("resolveIdleCompaction", () => {
   });
 });
 
+describe("ClientSettings sidebar preference", () => {
+  it.each([
+    [{}, false],
+    [{ legacySidebarEnabled: false }, false],
+    [{ legacySidebarEnabled: true }, true],
+    [{ legacySidebarEnabled: true, boringSidebarEnabled: false }, true],
+    [{ legacySidebarEnabled: true, boringSidebarEnabled: true }, true],
+    [{ legacySidebarEnabled: false, boringSidebarEnabled: true }, true],
+    [{ boringSidebarEnabled: true }, true],
+    [{ boringSidebarEnabled: false }, false],
+  ] as const)("retains the effective project layout from %j", (stored, expected) => {
+    const settings = decodeClientSettings({
+      ...stored,
+      sidebarWorkingShelfEnabled: false,
+      sidebarProjectGroupingMode: "repository",
+    });
+    expect(settings.boringSidebarEnabled).toBe(expected);
+    expect(settings.sidebarWorkingShelfEnabled).toBe(false);
+    expect(settings.sidebarProjectGroupingMode).toBe("repository");
+    const encoded = encodeClientSettings(settings);
+    expect(encoded.boringSidebarEnabled).toBe(expected);
+    expect(encoded).not.toHaveProperty("legacySidebarEnabled");
+    expect(
+      decodeClientSettings(encodeClientSettings({ ...settings, boringSidebarEnabled: false }))
+        .boringSidebarEnabled,
+    ).toBe(false);
+  });
+});
+
 describe("ClientSettings notifications", () => {
   it("requires opt-in when existing settings omit notification preferences", () => {
     expect(decodeClientSettings({}).notificationMode).toBe("off");

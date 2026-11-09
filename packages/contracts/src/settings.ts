@@ -386,7 +386,7 @@ export const VoiceTranscriptionDestination = Schema.Union([
 ]);
 export type VoiceTranscriptionDestination = typeof VoiceTranscriptionDestination.Type;
 
-export const ClientSettingsSchema = Schema.Struct({
+const CurrentClientSettingsSchema = Schema.Struct({
   notificationMode: NotificationMode.pipe(
     Schema.withDecodingDefault(Effect.succeed("off" as const)),
   ),
@@ -573,6 +573,21 @@ export const ClientSettingsSchema = Schema.Struct({
   // KaTeX out of the render path entirely.
   mathRenderingEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
 });
+export const ClientSettingsSchema = Schema.Struct({
+  ...CurrentClientSettingsSchema.fields,
+  legacySidebarEnabled: Schema.optionalKey(Schema.Boolean),
+}).pipe(
+  Schema.decodeTo(
+    Schema.toType(CurrentClientSettingsSchema),
+    SchemaTransformation.transform({
+      decode: ({ legacySidebarEnabled, ...settings }) => ({
+        ...settings,
+        boringSidebarEnabled: settings.boringSidebarEnabled || legacySidebarEnabled === true,
+      }),
+      encode: (settings) => settings,
+    }),
+  ),
+);
 export type ClientSettings = typeof ClientSettingsSchema.Type;
 
 export const DEFAULT_CLIENT_SETTINGS: ClientSettings = Schema.decodeSync(ClientSettingsSchema)({});
