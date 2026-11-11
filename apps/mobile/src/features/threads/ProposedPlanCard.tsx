@@ -3,7 +3,7 @@ import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
-import type { EnvironmentId } from "@t3tools/contracts";
+import type { EnvironmentId, PlanId } from "@t3tools/contracts";
 import { proposedPlanTitle, stripDisplayedPlanMarkdown } from "@t3tools/shared/proposedPlanText";
 import { useRef, useState, type ReactNode } from "react";
 import { View } from "react-native";
@@ -14,13 +14,18 @@ import * as Dialog from "../../components/ui/Dialog";
 import { projectEnvironment } from "../../state/projects";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { CopyTextButton } from "./CopyTextButton";
+import { usePlanFollowUp } from "./plan-follow-up";
 
 export function ProposedPlanCard(props: {
   readonly environmentId: EnvironmentId;
   readonly workspaceRoot: string | null | undefined;
   readonly markdown: string;
+  readonly planId?: PlanId | undefined;
   readonly renderMarkdown: (text: string) => ReactNode;
 }) {
+  const followUp = usePlanFollowUp();
+  const implementablePlanId =
+    followUp && followUp.implementablePlanId === props.planId ? followUp.implementablePlanId : null;
   const canWrite = useAtomValue(projectEnvironment.writeFile.permissionAtom(props.environmentId));
   const writeFile = useAtomCommand(projectEnvironment.writeFile, { reportFailure: false });
   const inFlight = useRef(false);
@@ -62,7 +67,15 @@ export function ProposedPlanCard(props: {
         <CopyTextButton accessibilityLabel="Copy plan" text={contents} />
       </View>
       {props.renderMarkdown(stripDisplayedPlanMarkdown(props.markdown))}
-      <View className="flex-row">
+      <View className="flex-row gap-2">
+        {followUp && implementablePlanId ? (
+          <Button
+            label={followUp.implementing ? "Implementing..." : "Implement"}
+            tone="primary"
+            disabled={followUp.implementing}
+            onPress={() => followUp.implement(implementablePlanId, props.markdown)}
+          />
+        ) : null}
         <Button
           label={saving ? "Saving..." : "Save to workspace"}
           tone="secondary"

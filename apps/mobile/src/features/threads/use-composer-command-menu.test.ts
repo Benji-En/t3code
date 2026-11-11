@@ -64,29 +64,37 @@ describe("resolveComposerMenuSelection", () => {
 });
 
 describe("mobile slash commands", () => {
-  it("keeps a provider's native /plan", () => {
-    const items = buildComposerSlashCommandItems({
-      query: "pl",
-      atMessageStart: true,
-      hasThread: true,
-      selectedProviderStatus: {
-        driver: ProviderDriverKind.make("antigravity"),
-        slashCommands: [{ name: "plan", description: "Plan with Antigravity" }],
-      },
-    });
+  const antigravity = {
+    driver: ProviderDriverKind.make("antigravity"),
+    showInteractionModeToggle: false,
+    slashCommands: [{ name: "plan", description: "Plan with Antigravity" }],
+  };
 
-    expect(items).toHaveLength(1);
-    expect(items[0]?.type).toBe("provider-slash-command");
-    const item = items[0];
-    if (!item) throw new Error("Expected the native plan command");
-    expect(
-      resolveComposerCommandSelection({
-        draftMessage: "/pl",
-        trigger: { rangeStart: 0, rangeEnd: 3 },
-        item,
-      }),
-    ).toEqual({ text: "/plan ", cursor: 6 });
-  });
+  it.each([false, true])(
+    "keeps an unsupported provider's native /plan with mode changes allowed=%s",
+    (allowInteractionMode) => {
+      const items = buildComposerSlashCommandItems({
+        query: "pl",
+        atMessageStart: true,
+        hasThread: true,
+        allowInteractionMode,
+        selectedProviderStatus: antigravity,
+      });
+
+      expect(items).toHaveLength(1);
+      expect(items[0]?.type).toBe("provider-slash-command");
+      const item = items[0];
+      if (!item) throw new Error("Expected the native plan command");
+      expect(
+        resolveComposerCommandSelection({
+          draftMessage: "/pl",
+          trigger: { rangeStart: 0, rangeEnd: 3 },
+          item,
+          allowInteractionMode,
+        }),
+      ).toEqual({ text: "/plan ", cursor: 6, interactionMode: null });
+    },
+  );
 
   it("offers T3's /clear in place of the provider's, only at the message start", () => {
     const claude = {
@@ -98,12 +106,64 @@ describe("mobile slash commands", () => {
         query: "cle",
         atMessageStart,
         hasThread: true,
+        allowInteractionMode: true,
         offersFreshSession,
         selectedProviderStatus: claude,
       }).map((item) => item.id);
     expect(build(true)).toEqual(["cmd:clear"]);
     expect(build(false)).toEqual(["pcmd:clear"]);
     expect(build(true, false)).toEqual([]);
+  });
+
+  it("still applies the T3 plan command for supported providers, replacing their own", () => {
+    const items = buildComposerSlashCommandItems({
+      query: "plan",
+      atMessageStart: true,
+      hasThread: true,
+      allowInteractionMode: true,
+      selectedProviderStatus: {
+        driver: ProviderDriverKind.make("claudeAgent"),
+        slashCommands: [{ name: "plan", description: "Enter plan mode" }],
+      },
+    });
+    expect(items.map((candidate) => candidate.id)).toEqual(["cmd:plan"]);
+    const item = items[0];
+    if (!item) throw new Error("Expected the T3 plan command");
+    expect(
+      resolveComposerCommandSelection({
+        draftMessage: "/plan",
+        trigger: { rangeStart: 0, rangeEnd: 5 },
+        item,
+        allowInteractionMode: true,
+      }),
+    ).toEqual({ text: "", cursor: 0, interactionMode: "plan" });
+
+    expect(
+      resolveComposerCommandSelection({
+        draftMessage: "/plan",
+        trigger: { rangeStart: 0, rangeEnd: 5 },
+        item,
+        allowInteractionMode: false,
+      }),
+    ).toEqual({ text: "/plan ", cursor: 6, interactionMode: null });
+  });
+
+  it("names /plan as unavailable for a provider without plan mode or its own /plan", () => {
+    const items = buildComposerSlashCommandItems({
+      query: "pl",
+      atMessageStart: true,
+      hasThread: true,
+      allowInteractionMode: true,
+      selectedProviderStatus: {
+        driver: ProviderDriverKind.make("grok"),
+        displayName: "Grok",
+        showInteractionModeToggle: false,
+        slashCommands: [],
+      },
+    });
+    expect(items.map((item) => [item.id, item.description])).toEqual([
+      ["cmd:plan", "Plan mode isn't available for Grok"],
+    ]);
   });
 });
 

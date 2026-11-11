@@ -110,6 +110,7 @@ import {
 } from "./thread-route-hydration";
 import { ThreadHeader } from "./ThreadHeader";
 import { resumeThread } from "./resume-thread";
+import { PlanFollowUpContext, useImplementProposedPlan } from "./plan-follow-up";
 import {
   useAndroidWorkspaceBack,
   useWorkspaceBackNavigation,
@@ -397,6 +398,15 @@ function ThreadRouteContent(
   const loadEarlierHistory = useAtomCommand(threadEnvironment.loadEarlierHistory, {
     label: "load earlier thread history",
     reportFailure: false,
+  });
+  const planFollowUp = useImplementProposedPlan({
+    thread: selectedThread,
+    interactionMode: composer.interactionMode,
+    idle: composer.interruptibleRunId === null && canOperateThread,
+    modelSelection: composer.modelSelection,
+    setInteractionMode: setThreadInteractionMode,
+    startTurn: continueThreadRun,
+    onImplemented: () => composer.onUpdateInteractionMode("default"),
   });
   const historyControls = (() => {
     const history = selectedThreadDetailState.history;
@@ -952,7 +962,7 @@ function ThreadRouteContent(
         onOpenPullRequest={openPullRequest}
       />
 
-      <>
+      <PlanFollowUpContext value={planFollowUp}>
         <ThreadScreenBinding
           header={
             props.inspectorPresentation ? null : (
@@ -1058,13 +1068,15 @@ function ThreadRouteContent(
           offersSideChat={composer.sideChatUnavailableReason === null}
           onReconnectEnvironment={handleReconnectEnvironment}
           canSwitchThreadProvider={composer.canSwitchThreadProvider}
+          threadInteractionMode={composer.interactionMode}
+          onUpdateThreadInteractionMode={composer.onUpdateInteractionMode}
           onRespondToApproval={requests.onRespondToApproval}
           onSelectUserInputOption={requests.onSelectUserInputOption}
           onChangeUserInputCustomAnswer={requests.onChangeUserInputCustomAnswer}
           onSubmitUserInput={requests.onSubmitUserInput}
           onDismissUserInput={requests.onDismissUserInput}
         />
-      </>
+      </PlanFollowUpContext>
     </>
   );
 

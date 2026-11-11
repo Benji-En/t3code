@@ -1,4 +1,9 @@
-import type { ModelSelection, ProviderInstanceId, RuntimeMode } from "@t3tools/contracts";
+import type {
+  ModelSelection,
+  ProviderInstanceId,
+  ProviderInteractionMode,
+  RuntimeMode,
+} from "@t3tools/contracts";
 import { createModelSelection } from "@t3tools/shared/model";
 import { type ComponentProps, memo, useId, useRef, useState } from "react";
 
@@ -7,6 +12,7 @@ import { Menu, MenuPopup, MenuTrigger } from "../ui/menu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { ComposerControl, ComposerControlIcon } from "./ComposerControl";
 import { focusRequestedPermission, useComposerMenuProps } from "./composerEventScope";
+import { ComposerInteractionModeToggle } from "./ComposerInteractionModeToggle";
 import { ComposerPrimaryActions } from "./ComposerPrimaryActions";
 import { resolveModelPickerSelectedModel } from "./ModelPickerContent";
 import { ProviderModelPicker } from "./ProviderModelPicker";
@@ -22,6 +28,8 @@ const supervisedRuntimeModeOption: RuntimeModeOption = {
   ...runtimeModeConfig["approval-required"],
 };
 export const ComposerFooterModeControls = memo(function ComposerFooterModeControls(props: {
+  /** Fork: set only while plan mode is available; shows the Build/Plan toggle. */
+  interactionMode?: ProviderInteractionMode | undefined;
   runtimeMode: RuntimeMode;
   runtimeModeOptions: ReadonlyArray<RuntimeModeOption>;
   size?: "sm" | "xs";
@@ -30,6 +38,7 @@ export const ComposerFooterModeControls = memo(function ComposerFooterModeContro
   accessDisplay?: "label" | "icon" | "hidden";
   /** Draw the icon in the label color, not muted (the mode differs from the user's default). */
   emphasized?: boolean;
+  onToggleInteractionMode?: (() => void) | undefined;
   onRuntimeModeChange: (mode: RuntimeMode) => void;
 }) {
   const size = props.size ?? "sm";
@@ -93,7 +102,18 @@ export const ComposerFooterModeControls = memo(function ComposerFooterModeContro
     </Menu>
   );
 
-  return accessDisplay === "hidden" ? null : permissionsChip;
+  return (
+    <>
+      {accessDisplay === "hidden" ? null : permissionsChip}
+      {props.interactionMode !== undefined && props.onToggleInteractionMode ? (
+        <ComposerInteractionModeToggle
+          interactionMode={props.interactionMode}
+          size={size}
+          onToggle={props.onToggleInteractionMode}
+        />
+      ) : null}
+    </>
+  );
 });
 
 /**
@@ -202,6 +222,8 @@ export const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryA
   followUpBehavior: "queue" | "steer";
   canSteer: boolean;
   alternateShortcutLabel: string | null;
+  showPlanFollowUpPrompt: boolean;
+  promptHasText: boolean;
   voiceInputActive?: boolean;
   isSendBusy: boolean;
   sendDisabledReason: string | null;
@@ -214,6 +236,7 @@ export const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryA
   onResume: () => void;
   onPreviousPendingQuestion: () => void;
   onInterrupt: () => void;
+  onImplementPlanInNewThread: () => void;
   compactBeforeSendTokens: number | null;
   keepFullHistory: boolean;
   onToggleKeepFullHistory: () => void;
@@ -229,6 +252,8 @@ export const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryA
         followUpBehavior={props.followUpBehavior}
         canSteer={props.canSteer}
         alternateShortcutLabel={props.alternateShortcutLabel}
+        showPlanFollowUpPrompt={props.showPlanFollowUpPrompt}
+        promptHasText={props.promptHasText}
         voiceInputActive={props.voiceInputActive ?? false}
         isSendBusy={props.isSendBusy}
         sendDisabledReason={props.sendDisabledReason}
@@ -242,6 +267,7 @@ export const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryA
         onResume={props.onResume}
         onPreviousPendingQuestion={props.onPreviousPendingQuestion}
         onInterrupt={props.onInterrupt}
+        onImplementPlanInNewThread={props.onImplementPlanInNewThread}
         compactBeforeSendTokens={props.compactBeforeSendTokens}
         keepFullHistory={props.keepFullHistory}
         onToggleKeepFullHistory={props.onToggleKeepFullHistory}

@@ -2,6 +2,7 @@ import * as Dialog from "../../components/ui/Dialog";
 import type {
   EnvironmentId,
   ProjectId,
+  ProviderInteractionMode,
   ServerProvider,
   ThreadId,
   ThreadPullRequestLink,
@@ -29,6 +30,7 @@ import {
   useComposerDraftSelection,
 } from "../../state/use-composer-drafts";
 import { USAGE_LIMITS_COMMAND } from "@t3tools/shared/usageLimits";
+import { planModeUnavailableReason } from "../../state/plan-mode";
 import {
   detectComposerTrigger,
   replaceTextRange,
@@ -111,20 +113,55 @@ export function buildComposerSlashCommandItems(input: {
   /** T3's `/clear` replaces the provider's, which would clear a session T3 still treats as live. */
   readonly offersFreshSession?: boolean;
   readonly offersSideChat?: boolean;
-  readonly selectedProviderStatus: Pick<ServerProvider, "driver" | "slashCommands"> | null;
+  readonly allowInteractionMode: boolean;
+  readonly selectedProviderStatus: Pick<
+    ServerProvider,
+    "driver" | "slashCommands" | "showInteractionModeToggle" | "displayName"
+  > | null;
 }): ComposerCommandItem[] {
   const query = input.query.toLowerCase();
-  const items: ComposerCommandItem[] = "model".includes(query)
-    ? [
-        {
-          id: "cmd:model",
-          type: "slash-command",
-          command: "model",
-          label: "/model",
-          description: "Switch model",
-        },
-      ]
-    : [];
+  const allowInteractionMode =
+    input.allowInteractionMode && input.selectedProviderStatus?.showInteractionModeToggle !== false;
+  const builtIn = [
+    {
+      id: "cmd:model",
+      type: "slash-command",
+      command: "model",
+      label: "/model",
+      description: "Switch model",
+    },
+    {
+      id: "cmd:plan",
+      type: "slash-command",
+      command: "plan",
+      label: "/plan",
+      description: "Switch to plan mode",
+    },
+    {
+      id: "cmd:default",
+      type: "slash-command",
+      command: "default",
+      label: "/default",
+      description: "Switch to default mode",
+    },
+  ] satisfies ComposerCommandItem[];
+  const items: ComposerCommandItem[] = builtIn.filter(
+    (item) => item.command.includes(query) && (item.command === "model" || allowInteractionMode),
+  );
+  const planUnavailableReason = planModeUnavailableReason(input.selectedProviderStatus);
+  if (
+    planUnavailableReason !== null &&
+    "plan".includes(query) &&
+    !input.selectedProviderStatus?.slashCommands.some((command) => command.name === "plan")
+  ) {
+    items.push({
+      id: "cmd:plan",
+      type: "slash-command",
+      command: "plan",
+      label: "/plan",
+      description: planUnavailableReason,
+    });
+  }
 
   // Providers expand commands only at the start of a message. T3 commands
   // change local state and do not have this restriction, except `/clear`.
@@ -156,6 +193,8 @@ export function buildComposerSlashCommandItems(input: {
   for (const command of input.selectedProviderStatus?.slashCommands ?? []) {
     if (!command.name.toLowerCase().includes(query)) continue;
     if (command.name === "clear" && input.offersFreshSession) continue;
+    // T3's `/plan` replaces the provider's own while plan mode is available.
+    if (command.name === "plan" && allowInteractionMode) continue;
     if (command.name === "compact" && !input.hasCompactableConversation) continue;
     if (command.name === USAGE_LIMITS_COMMAND.name && input.offersUsageLimits && !input.hasThread) {
       continue;
@@ -225,8 +264,24 @@ export function resolveComposerCommandSelection(input: {
   readonly draftMessage: string;
   readonly trigger: Pick<ComposerTrigger, "rangeStart" | "rangeEnd">;
   readonly item: ComposerCommandItem;
-}): { readonly text: string; readonly cursor: number } {
+  readonly allowInteractionMode: boolean;
+}): {
+  readonly text: string;
+  readonly cursor: number;
+  readonly interactionMode: ProviderInteractionMode | null;
+} {
   const { draftMessage, trigger, item } = input;
+  if (
+    input.allowInteractionMode &&
+    item.type === "slash-command" &&
+    (item.command === "plan" || item.command === "default")
+  ) {
+    return {
+      ...replaceTextRange(draftMessage, trigger.rangeStart, trigger.rangeEnd, ""),
+      interactionMode: item.command,
+    };
+  }
+
   let replacement = "";
   if (item.type === "path") {
     replacement = `${serializeComposerFileLink(item.path)} `;
@@ -239,7 +294,10 @@ export function resolveComposerCommandSelection(input: {
   } else if (item.type === "model") {
     replacement = `${formatComposerModelMention(item.option.selection.instanceId, item.option.selection.model)} `;
   }
-  return replaceTextRange(draftMessage, trigger.rangeStart, trigger.rangeEnd, replacement);
+  return {
+    ...replaceTextRange(draftMessage, trigger.rangeStart, trigger.rangeEnd, replacement),
+    interactionMode: null,
+  };
 }
 
 export function useComposerCommandMenu({
@@ -260,6 +318,7 @@ export function useComposerCommandMenu({
   offersUsageLimits = false,
   enabled = true,
   onChangeDraftMessage,
+  onUpdateInteractionMode,
   onUsageLimits,
   modelOptions,
   modelProviders,
@@ -284,6 +343,7 @@ export function useComposerCommandMenu({
   readonly offersUsageLimits?: boolean;
   readonly enabled?: boolean;
   readonly onChangeDraftMessage: (value: string) => void;
+  readonly onUpdateInteractionMode?: (mode: ProviderInteractionMode) => void;
   readonly onUsageLimits?: () => void;
   readonly modelOptions?: ReadonlyArray<ModelOption>;
   readonly modelProviders?: ReadonlyArray<ServerProvider>;
@@ -395,6 +455,7 @@ export function useComposerCommandMenu({
         offersUsageLimits,
         offersFreshSession: onFreshSession !== undefined,
         offersSideChat,
+        allowInteractionMode: onUpdateInteractionMode !== undefined,
         selectedProviderStatus: selectedProviderStatus
           ? {
               ...selectedProviderStatus,
@@ -651,9 +712,26 @@ export function useComposerCommandMenu({
       return;
     }
 
-    const result = resolveComposerCommandSelection({ draftMessage, trigger, item });
+    const allowInteractionMode =
+      onUpdateInteractionMode !== undefined &&
+      selectedProviderStatus?.showInteractionModeToggle !== false;
+    if (item.type === "slash-command" && item.command === "plan" && !allowInteractionMode) {
+      Dialog.alert(
+        planModeUnavailableReason(selectedProviderStatus) ?? "Plan mode isn't available here",
+      );
+      return;
+    }
+    const result = resolveComposerCommandSelection({
+      draftMessage,
+      trigger,
+      item,
+      allowInteractionMode,
+    });
     setSelection({ start: result.cursor, end: result.cursor });
     onChangeDraftMessage(result.text);
+    if (result.interactionMode !== null) {
+      onUpdateInteractionMode?.(result.interactionMode);
+    }
   };
 
   return {

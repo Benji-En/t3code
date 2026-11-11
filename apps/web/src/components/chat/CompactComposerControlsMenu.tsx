@@ -1,8 +1,9 @@
-import type { RuntimeMode } from "@t3tools/contracts";
+import type { ProviderInteractionMode, RuntimeMode } from "@t3tools/contracts";
 import { memo, useRef } from "react";
 import { EllipsisIcon } from "lucide-react";
 import { Menu, MenuPopup, MenuTrigger } from "../ui/menu";
 import { ComposerControl, ComposerControlIcon } from "./ComposerControl";
+import { ComposerInteractionModeMenuGroup } from "./ComposerInteractionModeToggle";
 import { focusRequestedPermission, useComposerMenuProps } from "./composerEventScope";
 import { useComposerMenuState } from "./useComposerMenuState";
 import { ComposerPermissionsSection, type RuntimeModeOption } from "./ComposerFooterControls";
@@ -11,6 +12,9 @@ export const CompactComposerControlsMenu = memo(function CompactComposerControls
   runtimeMode: RuntimeMode;
   runtimeModeOptions: ReadonlyArray<RuntimeModeOption>;
   showPermissions: boolean;
+  /** Fork: set only while plan mode is available and its toggle is overflowed. */
+  interactionMode?: ProviderInteractionMode | undefined;
+  onToggleInteractionMode?: (() => void) | undefined;
   size?: "sm" | "xs";
   /** Close the portaled popup when its trigger hides. */
   hidden?: boolean;
@@ -41,6 +45,13 @@ export const CompactComposerControlsMenu = memo(function CompactComposerControls
         <ComposerControlIcon icon={EllipsisIcon} size={size} />
       </MenuTrigger>
       <MenuPopup align="start" {...composerFloatingLayerProps}>
+        {props.interactionMode !== undefined && props.onToggleInteractionMode ? (
+          <ComposerInteractionModeMenuGroup
+            interactionMode={props.interactionMode}
+            separated={props.showPermissions}
+            onToggle={props.onToggleInteractionMode}
+          />
+        ) : null}
         {props.showPermissions ? (
           <ComposerPermissionsSection
             runtimeMode={props.runtimeMode}

@@ -19,6 +19,15 @@ saves the existing appearance preference. Settings, the command palette, and
 **Ctrl+Alt+Shift+A** still offer Light/Dark/System. The web and Electron clients
 share the skin; the native mobile client is unchanged.
 
+## Plan mode
+
+Plan mode stays on in every client, though upstream removed it (`521ac7c218`); the fork's code is in `apps/web/src/planMode.ts` and `apps/mobile/src/state/plan-mode.ts`. Enter it with
+**/plan**, the composer's **Build/Plan** toggle, or **Shift+Tab**; leave it with **/default** or
+the same toggle. A ready plan turns Send into **Implement** (or **Refine** once you type feedback),
+with **Implement in a new thread** beside it. On mobile, a **Plan** chip shows the mode (tap it for
+Build) and the plan card offers **Implement**. Claude, Codex, Cursor, OpenCode 2 and ACP agents
+support it; the slash menu says when a provider does not.
+
 ## Windows launch
 
 The native launcher uses `%LOCALAPPDATA%\T3Code-Benji` for data, provider settings,

@@ -21,6 +21,7 @@ import {
   type EnvironmentId,
   type MessageId,
   type ModelSelection,
+  type ProviderInteractionMode,
   type ServerConfig as T3ServerConfig,
   type UsageLimitsReport,
 } from "@t3tools/contracts";
@@ -116,6 +117,8 @@ import {
 import { useVoiceInputController } from "../voice-input/useVoiceInputController";
 import { resolveVoiceComposerPresentation } from "../voice-input/voiceInputPresentation";
 import type { ExistingThreadSettingsRouteParams } from "./ThreadSettingsSheet";
+import { ComposerPlanModeControl } from "./ComposerPlanModeControl";
+import { providerOffersPlanMode } from "../../state/plan-mode";
 import {
   useThreadSettingsSheetPresentation,
   type NavigationWithFinishTransitioning,
@@ -252,6 +255,8 @@ export interface ThreadComposerProps {
   ) => Promise<MessageId | null>;
   readonly onShowUsageLimits: (report: UsageLimitsReport | null) => void;
   readonly canSwitchProvider: boolean;
+  readonly interactionMode?: ProviderInteractionMode | null | undefined;
+  readonly onUpdateInteractionMode?: (interactionMode: ProviderInteractionMode) => void;
   readonly onHeightChange?: (height: number) => void;
   readonly onEditorFocusChange?: (focused: boolean) => void;
 }
@@ -545,6 +550,9 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
     undefined,
     props.selectedThread.projectId,
   );
+  const onUpdateInteractionMode = providerOffersPlanMode(selectedProviderStatus)
+    ? props.onUpdateInteractionMode
+    : undefined;
   const composerMenu = useComposerCommandMenu({
     draftMessage: draftMessage,
     ownerKey: composerDraftKey,
@@ -563,6 +571,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
     hasThread: !props.isDraft,
     hasCompactableConversation: props.hasCompactableConversation,
     onChangeDraftMessage: props.onChangeDraftMessage,
+    onUpdateInteractionMode,
     offersUsageLimits: usageLimitsOffered,
     onUsageLimits:
       usageLimitsOffered && draftAttachments.length === 0 ? openUsageLimits : undefined,
@@ -1092,6 +1101,12 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
                   compactEditor.isExpanded ? { flex: 1, justifyContent: "flex-end" } : undefined
                 }
               >
+                <ComposerPlanModeControl
+                  interactionMode={props.interactionMode}
+                  size={usesLargeControls ? "large" : "regular"}
+                  iconOnly={!compactEditor.isExpanded}
+                  onUpdateInteractionMode={onUpdateInteractionMode}
+                />
                 {modelControl}
                 <ComposerDictationStartAction
                   size={usesLargeControls ? "large" : "regular"}

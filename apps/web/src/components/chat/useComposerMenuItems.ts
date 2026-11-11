@@ -23,6 +23,7 @@ import { formatProviderSkillDisplayName } from "@t3tools/shared/inlineSkills";
 
 import type { ComposerTrigger } from "../../composer-logic";
 import type { DraftId } from "../../composerDraftStore";
+import { hidesProviderPlanCommand } from "../../planMode";
 import { basenameOfPath } from "../../pierre-icons";
 import {
   getProviderSkillsForSlashMenu,
@@ -67,6 +68,8 @@ export function useComposerMenuItems({
   pullRequestProjectId,
   pullRequestRepository,
   threadPullRequests,
+  planModeUiEnabled,
+  planModeUnavailableReason,
   sideChatAvailable,
   sideChatDisabledReason,
   freshSessionAvailable,
@@ -87,6 +90,9 @@ export function useComposerMenuItems({
   readonly pullRequestProjectId: ProjectId | null;
   readonly pullRequestRepository: string | null;
   readonly threadPullRequests: ReadonlyArray<ThreadPullRequestLink> | undefined;
+  readonly planModeUiEnabled: boolean;
+  /** Lists `/plan` as unavailable for providers without plan mode or a `/plan` of their own. */
+  readonly planModeUnavailableReason: string | null;
   readonly sideChatAvailable: boolean;
   readonly sideChatDisabledReason: string | null;
   readonly freshSessionAvailable: boolean;
@@ -238,6 +244,35 @@ export function useComposerMenuItems({
           label: "/model",
           description: "Switch response model for this thread",
         },
+        ...(planModeUiEnabled
+          ? ([
+              {
+                id: "slash:plan",
+                type: "slash-command",
+                command: "plan",
+                label: "/plan",
+                description: "Switch this thread into plan mode",
+              },
+              {
+                id: "slash:default",
+                type: "slash-command",
+                command: "default",
+                label: "/default",
+                description: "Switch this thread back to normal build mode",
+              },
+            ] as const)
+          : planModeUnavailableReason !== null &&
+              !selectedProviderSlashCommands.some((command) => command.name === "plan")
+            ? ([
+                {
+                  id: "slash:plan",
+                  type: "slash-command",
+                  command: "plan",
+                  label: "/plan",
+                  description: planModeUnavailableReason,
+                },
+              ] as const)
+            : []),
         ...(sideChatAvailable
           ? ([
               {
@@ -299,7 +334,8 @@ export function useComposerMenuItems({
       const visibleProviderSlashCommandItems = providerSlashCommandItems.filter(
         (item) =>
           (item.command.name !== "compact" || compactSlashCommandAvailable) &&
-          (item.command.name !== "clear" || !freshSessionAvailable),
+          (item.command.name !== "clear" || !freshSessionAvailable) &&
+          !hidesProviderPlanCommand(item.command.name, planModeUiEnabled),
       );
       const slashCommandItems = slashCommandItemsForPromptPosition(
         [...builtInSlashCommandItems, ...visibleProviderSlashCommandItems, ...skillItems],

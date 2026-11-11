@@ -10,6 +10,7 @@ import { StageBackdropButtonArt, useSidebarStageBackdropVariant } from "../Sideb
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { ComposerPlanFollowUpActions } from "./ComposerPlanFollowUpActions";
 import {
   alternateComposerDispatchAction,
   resolveComposerDispatchMode,
@@ -34,6 +35,9 @@ interface ComposerPrimaryActionsProps {
   followUpBehavior?: "queue" | "steer";
   canSteer?: boolean;
   alternateShortcutLabel?: string | null;
+  /** Fork: a ready plan turns Send into Refine or Implement. */
+  showPlanFollowUpPrompt?: boolean;
+  promptHasText?: boolean;
   /** Dictation is running; Send finishes it and submits once the transcript lands. */
   voiceInputActive?: boolean;
   isSendBusy: boolean;
@@ -48,6 +52,7 @@ interface ComposerPrimaryActionsProps {
   onResume?: () => void;
   onPreviousPendingQuestion: () => void;
   onInterrupt: () => void;
+  onImplementPlanInNewThread?: () => void;
   compactBeforeSendTokens?: number | null;
   keepFullHistory?: boolean;
   onToggleKeepFullHistory?: () => void;
@@ -88,6 +93,8 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   followUpBehavior = "steer",
   canSteer = true,
   alternateShortcutLabel = null,
+  showPlanFollowUpPrompt = false,
+  promptHasText = false,
   voiceInputActive = false,
   isSendBusy,
   sendDisabledReason,
@@ -101,6 +108,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   onResume,
   onPreviousPendingQuestion,
   onInterrupt,
+  onImplementPlanInNewThread,
   compactBeforeSendTokens = null,
   keepFullHistory = false,
   onToggleKeepFullHistory,
@@ -201,6 +209,25 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
           })}
         </button>
       </div>
+    );
+  }
+
+  if (showPlanFollowUpPrompt && onImplementPlanInNewThread && (promptHasText || !canResume)) {
+    return (
+      <>
+        {children}
+        <ComposerPlanFollowUpActions
+          pillClassName={messageActionPillClassName}
+          compact={compact}
+          promptHasText={promptHasText}
+          disabled={isSendBusy || isSendDisabled || isEnvironmentUnavailable}
+          isSendBusy={isSendBusy}
+          canOperateThread={canOperateThread}
+          preserveComposerFocusOnPointerDown={preserveComposerFocusOnPointerDown}
+          pointerFocusProps={pointerFocusProps}
+          onImplementPlanInNewThread={onImplementPlanInNewThread}
+        />
+      </>
     );
   }
 
