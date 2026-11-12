@@ -98,6 +98,8 @@ describe("runMigrations", () => {
         [79, "DropOrchestrationEventCorrelationIndex"],
         [80, "DelegatedRecoveryIndexes"],
         [81, "ScheduledTaskThreadMode"],
+        [82, "ProjectionMessageSearchText"],
+        [83, "TurnItemConversationIndex"],
       ]);
       assert.deepStrictEqual(
         yield* sql`SELECT task_folders_json, pinned_at, archived_at FROM projection_projects WHERE project_id = 'project-1'`,
@@ -179,6 +181,20 @@ describe("runMigrations", () => {
       );
       assert.notInclude(String(exit), "57_ScheduledTaskWebhooks");
       assert.deepStrictEqual(yield* history, before);
+    }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
+  );
+
+  it.effect("reapplies peer link migrations whose ledger rows are missing", () =>
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* runMigrations({ toMigrationInclusive: 73 });
+      yield* sql`DELETE FROM effect_sql_migrations WHERE migration_id BETWEEN 71 AND 73`;
+
+      assert.deepStrictEqual(
+        yield* runMigrations(),
+        migrationManifest.filter(([id]) => id >= 71),
+      );
+      assert.deepStrictEqual(yield* history, migrationManifest);
     }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
   );
 

@@ -26,6 +26,7 @@ import * as Exit from "effect/Exit";
 import * as FileSystem from "effect/FileSystem";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
+import * as Path from "effect/Path";
 import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
@@ -90,7 +91,7 @@ const layerProviders = Layer.mock(ProviderRegistry.ProviderRegistry)({
   getProviders: Effect.succeed([]),
 });
 const layerConfig = ServerConfig.layerTest(process.cwd(), { prefix: "t3-guest-share-" });
-// The real cleanup also closes terminals and previews; these tests only need the files gone.
+// The real cleanup also closes terminals, previews and devices; these tests only need the files gone.
 const layerCleanup = Layer.effect(
   ResourceCleanupService.ResourceCleanupService,
   Effect.gen(function* () {
@@ -100,6 +101,7 @@ const layerCleanup = Layer.effect(
       cleanupScheduledTasks: () => Effect.void,
       cleanupTerminals: () => Effect.void,
       cleanupPreviews: () => Effect.void,
+      cleanupDevices: () => Effect.void,
       cleanupAttachments: (attachmentIds) =>
         Effect.forEach(
           attachmentIds,
@@ -1047,9 +1049,10 @@ it.effect("serves an image on the host only when an agent reply the guest sees s
     const { orchestrator, guestShares } = yield* shareThread;
     const runId = yield* ownerRun;
     const fileSystem = yield* FileSystem.FileSystem;
-    const directory = yield* fileSystem.makeTempDirectoryScoped();
+    const directory = (yield* fileSystem.makeTempDirectoryScoped()).replaceAll("\\", "/");
     const shot = `${directory}/my shot.png`;
     const fileUrl = `${directory}/file-url.png`;
+    const fileUri = yield* (yield* Path.Path).toFileUrl(fileUrl);
     const page = `${directory}/page.png`;
     const fromUser = `${directory}/from-user.png`;
     const unnamed = `${directory}/unnamed.png`;
@@ -1106,7 +1109,7 @@ it.effect("serves an image on the host only when an agent reply the guest sees s
       events: [
         item("item:agent-images", 1, {
           type: "assistant_message",
-          text: `Done: ![Shot](<${shot}>) ![Other](file://${encodeURI(fileUrl)}) ![Page](${page})`,
+          text: `Done: ![Shot](<${shot}>) ![Other](${fileUri.href}) ![Page](${page})`,
         }),
         // A guest's sent message is a user message; it must not open files on the host.
         item("item:guest-image", 2, { type: "user_message", text: `![Mine](${fromUser})` }),
