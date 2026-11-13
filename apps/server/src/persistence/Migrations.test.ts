@@ -100,6 +100,12 @@ describe("runMigrations", () => {
         [81, "ScheduledTaskThreadMode"],
         [82, "ProjectionMessageSearchText"],
         [83, "TurnItemConversationIndex"],
+        [84, "CommandReadIndexes"],
+        [85, "LastExecutedRunIndex"],
+        [86, "TurnItemCounts"],
+        [87, "QueuedTurnInputIndex"],
+        [88, "ProjectionProjectsCustomTitle"],
+        [89, "TurnItemTypeStatusIndex"],
       ]);
       assert.deepStrictEqual(
         yield* sql`SELECT task_folders_json, pinned_at, archived_at FROM projection_projects WHERE project_id = 'project-1'`,
@@ -181,6 +187,22 @@ describe("runMigrations", () => {
       );
       assert.notInclude(String(exit), "57_ScheduledTaskWebhooks");
       assert.deepStrictEqual(yield* history, before);
+    }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
+  );
+
+  it.effect("keeps the migrations that finished before a later one failed", () =>
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* runMigrations({ toMigrationInclusive: 81 });
+      yield* sql`CREATE TABLE orchestration_v2_projection_turn_item_counts (thread_id TEXT)`;
+
+      const exit = yield* Effect.exit(runMigrations());
+
+      assert.isTrue(Exit.isFailure(exit));
+      assert.deepStrictEqual(
+        yield* history,
+        migrationManifest.filter(([id]) => id <= 85),
+      );
     }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
   );
 
