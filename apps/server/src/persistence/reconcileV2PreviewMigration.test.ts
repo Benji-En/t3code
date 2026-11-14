@@ -69,6 +69,9 @@ describe("V2 preview upgrade", () => {
         [87, "QueuedTurnInputIndex"],
         [88, "ProjectionProjectsCustomTitle"],
         [89, "TurnItemTypeStatusIndex"],
+        [90, "ShellThreadReadIndexes"],
+        [91, "AuthConnectDevices"],
+        [92, "AuthConnectDeniedRequests"],
       ]);
       assert.deepStrictEqual(yield* runMigrations(), []);
       assert.deepStrictEqual(yield* sql`SELECT * FROM orchestration_v2_legacy_imports`, imports);
@@ -181,6 +184,9 @@ describe("V2 preview upgrade", () => {
         [87, "QueuedTurnInputIndex"],
         [88, "ProjectionProjectsCustomTitle"],
         [89, "TurnItemTypeStatusIndex"],
+        [90, "ShellThreadReadIndexes"],
+        [91, "AuthConnectDevices"],
+        [92, "AuthConnectDeniedRequests"],
       ]);
     }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
   );
