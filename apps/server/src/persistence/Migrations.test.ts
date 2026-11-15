@@ -109,6 +109,9 @@ describe("runMigrations", () => {
         [90, "ShellThreadReadIndexes"],
         [91, "AuthConnectDevices"],
         [92, "AuthConnectDeniedRequests"],
+        [93, "QueuedTurnInputIndexJsonValid"],
+        [94, "ProviderTurnAttemptIndex"],
+        [95, "TurnItemMessageOrdinalIndex"],
       ]);
       assert.deepStrictEqual(
         yield* sql`SELECT task_folders_json, pinned_at, archived_at FROM projection_projects WHERE project_id = 'project-1'`,
