@@ -25,6 +25,8 @@ beforeEach(async () => {
   await exec("git", ["init", "-b", "main", cwd]);
   await git("config", "user.name", "Branch test");
   await git("config", "user.email", "branch-test@example.com");
+  await git("config", "core.autocrlf", "false");
+  await git("config", "core.longpaths", "true");
   await NodeFSP.writeFile(NodePath.join(cwd, "file.txt"), "main\n");
   await git("add", ".");
   await git("commit", "-m", "main");
@@ -77,14 +79,15 @@ const readRefs: CheckoutInput["readRefs"] = (request) =>
           current: head.trim() === `refs/heads/${name}`,
           isDefault: name === "main",
           isRemote: false,
-          worktreePath: path || null,
+          worktreePath: path ? NodePath.normalize(path) : null,
           ...(upstreamRef ? { upstreamRef } : {}),
         };
       })
       .filter((ref) => ref.name.includes(input.query ?? ""));
     const cursor = input.cursor ?? 0;
     return {
-      isAtRepositoryRoot: (await NodeFSP.realpath(input.cwd)) === rootPath.trim(),
+      isAtRepositoryRoot:
+        (await NodeFSP.realpath(input.cwd)) === NodePath.normalize(rootPath.trim()),
       refs: refs.slice(cursor, cursor + REF_PAGE_SIZE),
       isRepo: true,
       hasPrimaryRemote: false,
@@ -135,12 +138,12 @@ async function addRemote(remoteName: string, sourceRef = branch.name) {
 }
 
 describe("new-task branch checkout", () => {
-  it("switches to a free branch and clears its historical worktree path", async () => {
+  it("switches to a free branch despite stale current and worktree metadata", async () => {
     const previousWorktree = NodePath.join(directory, "previous-worktree");
     await git("worktree", "add", previousWorktree, branch.name);
     await exec("git", ["-C", previousWorktree, "checkout", "-b", "other-branch"]);
     const result = await checkoutNewTaskBranch({
-      branch: { ...branch, worktreePath: previousWorktree },
+      branch: { ...branch, current: true, worktreePath: previousWorktree },
       project: { environmentId, workspaceRoot: cwd },
       workspaceMode: "local",
       readRefs,
