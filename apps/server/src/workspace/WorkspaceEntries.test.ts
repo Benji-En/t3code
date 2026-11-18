@@ -537,7 +537,10 @@ it.layer(layerTest, { excludeTestServices: true })("WorkspaceEntries", (it) => {
         yield* git(cwd, ["add", ".convex/local-storage/data.json", "src/keep.ts"]);
         yield* writeTextFile(cwd, ".gitignore", ".convex/\n");
 
-        const result = yield* searchWorkspaceEntries({ cwd, query: "", limit: 100 });
+        const result = yield* searchWorkspaceEntries({ cwd, query: "", limit: 100 }).pipe(
+          Effect.provide(Layer.fresh(WorkspaceEntries.layer)),
+          Effect.scoped,
+        );
         const paths = result.entries.map((entry) => entry.path);
 
         expect(paths).toContain("src");

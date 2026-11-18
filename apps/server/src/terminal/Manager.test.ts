@@ -1,6 +1,7 @@
 import { deriveProviderInstanceConfigMap } from "../provider/ProviderInstanceRegistryHydration.ts";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodePath from "@effect/platform-node/NodePath";
 import { assert, it } from "@effect/vitest";
 import {
   DEFAULT_TERMINAL_ID,
@@ -2128,7 +2129,7 @@ it.layer(
       const { manager, ptyAdapter } = yield* createManager(5, {
         env: { SHELL: "/shell-fixture/Jane -Doe Smith/.local/bin/fish -l" },
       }).pipe(
-        Effect.provide(layerWithHostPlatform("darwin")),
+        Effect.provide(Layer.mergeAll(layerWithHostPlatform("darwin"), NodePath.layerPosix)),
         Effect.provideService(FileSystem.FileSystem, fixtureFs),
       );
 
@@ -2148,7 +2149,9 @@ it.layer(
       ]) {
         const { manager, ptyAdapter } = yield* createManager(5, {
           env: { SHELL: shell },
-        }).pipe(Effect.provide(layerWithHostPlatform("darwin")));
+        }).pipe(
+          Effect.provide(Layer.mergeAll(layerWithHostPlatform("darwin"), NodePath.layerPosix)),
+        );
 
         yield* manager.open(openInput());
 
@@ -2222,7 +2225,14 @@ it.layer(
     Effect.gen(function* () {
       const { manager, ptyAdapter } = yield* createManager(5, {
         env: { T3CODE_TERMINAL_SHELL: ` ${shell} `, SHELL: "/bin/zsh" },
-      }).pipe(Effect.provide(layerWithHostPlatform(platform)));
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            layerWithHostPlatform(platform),
+            platform === "linux" ? NodePath.layerPosix : Layer.empty,
+          ),
+        ),
+      );
 
       yield* manager.open(openInput());
 
