@@ -169,6 +169,7 @@ describe("AgentDevice startup", () => {
   it.effect("uses the SDK a later shell environment selects", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
       const home = yield* fs.makeTempDirectoryScoped({ prefix: "t3-device-sdk-" });
       const standard = `${home}/Library/Android/sdk`;
       const profile = `${home}/profile-sdk`;
@@ -198,7 +199,7 @@ describe("AgentDevice startup", () => {
       const ready = yield* host.ensureAgentReady(() => Effect.void);
       yield* ready.run("emulator", ["-list-avds"]);
 
-      const emulator = `${profile}/emulator/emulator`;
+      const emulator = path.join(profile, "emulator", "emulator");
       const sdkRuns = runs.filter(
         (run) => run.command === emulator || run.args.includes("devices"),
       );
@@ -211,7 +212,7 @@ describe("AgentDevice startup", () => {
       ]);
       for (const run of sdkRuns) {
         expect(run.env?.ANDROID_HOME).toBe(profile);
-        expect(run.env?.PATH?.split(":")[0]).toBe(`${profile}/platform-tools`);
+        expect(run.env?.PATH?.startsWith(`${path.join(profile, "platform-tools")}:`)).toBe(true);
       }
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
   );
@@ -546,6 +547,23 @@ describe("Android SDK availability", () => {
         { ANDROID_HOME: "/sdk" },
       );
       expect(reason).toBeNull();
+    }),
+  );
+
+  // regression: #38268 an ANDROID_HOME that is not an SDK must not stop detection
+  it.effect("falls back past an ANDROID_HOME that is not an SDK", () =>
+    Effect.gen(function* () {
+      const complete = [
+        "/parent/sdk/platform-tools/adb",
+        "/parent/sdk/emulator/emulator",
+        "/parent/sdk/cmdline-tools/latest/bin/avdmanager",
+      ];
+      for (const environment of [
+        { ANDROID_HOME: "/parent", ANDROID_SDK_ROOT: "/parent/sdk" },
+        { ANDROID_HOME: "/parent", PATH: "/parent/sdk/platform-tools" },
+      ]) {
+        expect(yield* diagnose(complete, environment)).toBeNull();
+      }
     }),
   );
 

@@ -120,6 +120,8 @@ describe("runMigrations", () => {
         [95, "TurnItemMessageOrdinalIndex"],
         [96, "TurnItemInlineWorkOutput"],
         [97, "RepairStaleTitleRegeneration"],
+        [98, "IssueTrackerBindings"],
+        [99, "ActiveShellIndexIndexes"],
       ]);
       assert.deepStrictEqual(
         yield* sql`SELECT task_folders_json, pinned_at, archived_at FROM projection_projects WHERE project_id = 'project-1'`,

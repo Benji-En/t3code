@@ -118,7 +118,10 @@ vi.mock("../../state/entities", () => ({
       [
         "environment",
         {
-          environment: { platform: { os: "linux" }, capabilities: {} },
+          environment: {
+            platform: { os: /^[A-Za-z]:[\\/]/.test(state.baseDirectory) ? "windows" : "linux" },
+            capabilities: {},
+          },
           newProjectsRoot: state.newProjectsRoot,
           settings: { addProjectBaseDirectory: state.baseDirectory },
         },
